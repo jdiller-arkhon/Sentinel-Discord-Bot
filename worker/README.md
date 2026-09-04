@@ -44,20 +44,28 @@ new one, as long as they're the same person who originally activated it.
 
 ### Sentinel-side authentication (`sentinel_token`)
 
-Sentinel's approve/reject/list endpoints ship with no built-in authentication —
-its own CORS allowlist only restricts browser-origin requests (the desktop
-app's webview), which has no effect on this Worker's server-to-server calls.
-That means a Sentinel tunnel URL alone is what stands between the internet and
-a live "change my trading parameters" endpoint, so a shared-secret header is
-worth using:
+Sentinel now supports an optional `X-Sentinel-Token` shared secret on all three
+endpoints this bot calls (`GET /ai/proposals`, `POST .../approve`, `POST
+.../reject`), guarded with a timing-safe comparison — confirmed against the
+live server, including that leaving it unset keeps those endpoints exactly as
+open as before. Without it, a customer's tunnel URL alone is what stands
+between the internet and a live "change my trading parameters" endpoint, so
+setting one is worth doing:
 
-- If a customer's Sentinel instance checks for an `X-Sentinel-Token` header,
-  have them pass it as `/activate`'s optional `sentinel_token` — this Worker
-  sends it as `X-Sentinel-Token` on every request to their `sentinel_base_url`
-  (`src/sentinelApi.js`).
-- For your own admin bot, set the `ADMIN_SENTINEL_TOKEN` secret the same way.
+- The customer sets their secret via `POST /notifications/settings` (the same
+  settings store as their Discord webhook URL) — a new `api_token` field there.
+  Reading settings back only ever returns `api_token_set: true/false`, never
+  the plaintext value.
+- They then pass that same value as `/activate`'s optional `sentinel_token`.
+  This Worker sends it as `X-Sentinel-Token` on every request to their
+  `sentinel_base_url` (`src/sentinelApi.js`).
+- For your own admin bot, set it the same way in your own Sentinel's settings,
+  then set the `ADMIN_SENTINEL_TOKEN` secret to match.
 - If a customer doesn't set one, the bot still works, but their welcome message
   in their new channel warns them that their tunnel URL alone is unauthenticated.
+- A 401 from Sentinel (missing/wrong token) surfaces in Discord as a clear
+  `⚠️ Failed to approve/reject: missing or invalid X-Sentinel-Token` message,
+  since the bot reads Sentinel's `{"detail": "..."}` error shape directly.
 
 ## One-time setup (you, not the customer)
 
