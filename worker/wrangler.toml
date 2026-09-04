@@ -1,0 +1,22 @@
+name = "sentinel-discord-bot"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# One cron trigger checking for new pending proposals across every active
+# license (including your own admin bot). Workers Paid allows down to 1 minute.
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sentinel-bot-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+# Secrets (set with `wrangler secret put <NAME>`, never committed here):
+#   ADMIN_APPLICATION_ID
+#   ADMIN_PUBLIC_KEY
+#   ADMIN_BOT_TOKEN
+#   ADMIN_CHANNEL_ID
+#   ADMIN_ALLOWED_USER_ID   -- who can click Approve/Reject on your own proposals
+#   ADMIN_USER_ID           -- who can run /license commands (usually same as above)
+#   ADMIN_SENTINEL_BASE_URL -- your own Sentinel's tunnel URL

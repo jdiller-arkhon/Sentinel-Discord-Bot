@@ -3,6 +3,12 @@
 Approve or reject Sentinel's AI strategy proposals with a button click in Discord,
 instead of only in the Sentinel desktop app.
 
+> **Hosting on Cloudflare?** This repo (Node + discord.js gateway) needs a
+> persistent, always-on process — it won't run on Cloudflare Workers, including the
+> free plan. See [`worker/`](./worker) for a from-scratch Cloudflare Workers
+> rewrite (HTTP Interactions + Cron Trigger + D1, no discord.js) built for that
+> environment instead. Both versions have the same admin/sub-bot licensing model.
+
 ## How it works
 
 - The bot polls Sentinel's `GET /ai/proposals?status=pending` on an interval and
