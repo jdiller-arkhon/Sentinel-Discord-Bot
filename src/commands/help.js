@@ -12,6 +12,10 @@ module.exports = {
         "- Approving a momentum parameter tweak applies it immediately through Sentinel's audited path.",
         "- Anything else (a mean-reversion tweak, a new-strategy idea) is only acknowledged — no automatic change exists for it yet. The bot always tells you honestly which happened.",
         "- `/status` — check whether this channel's connection to Sentinel is healthy.",
+        "- `/pending` — check Sentinel right now instead of waiting for the next automatic poll.",
+        "- `/history` — see your 5 most recently approved/rejected proposals.",
+        "- `/audit` — see who approved/rejected what in this channel, and when.",
+        "- `/pause` / `/resume` — temporarily stop or restart new proposals posting here.",
         "- Only you (and whoever set this channel up) can see it or press its buttons.",
       ].join("\n"),
     });

@@ -55,7 +55,7 @@ async function pollCustomer(discordClient, customer) {
           `Base URL: ${customer.sentinel_base_url}`
       );
     }
-    return;
+    return { ok: false, error: err.message, postedCount: 0 };
   }
 
   // Recovered (or was already healthy) — clear the failure streak and
@@ -86,9 +86,10 @@ async function pollCustomer(discordClient, customer) {
   const channel = await discordClient.channels.fetch(customer.channel_id).catch(() => null);
   if (!channel) {
     console.error(`customer ${customer.id} channel ${customer.channel_id} is not reachable`);
-    return;
+    return { ok: false, error: "channel not reachable", postedCount: 0 };
   }
 
+  let postedCount = 0;
   for (const proposal of proposals) {
     if (isPosted.get(customer.id, proposal.id)) continue;
     try {
@@ -97,6 +98,7 @@ async function pollCustomer(discordClient, customer) {
         components: [proposalActionRow(proposal.id)],
       });
       markPosted.run(customer.id, proposal.id, message.id, new Date().toISOString());
+      postedCount += 1;
     } catch (err) {
       // A single bad proposal (e.g. one that still blew past Discord's
       // limits some other way) shouldn't stop the rest from posting, and
@@ -108,6 +110,8 @@ async function pollCustomer(discordClient, customer) {
       );
     }
   }
+
+  return { ok: true, error: null, postedCount, pendingCount: proposals.length };
 }
 
 async function pollAll(discordClient) {

@@ -85,6 +85,10 @@ class SentinelClient {
     return this._request("/ai/proposals?status=pending");
   }
 
+  getProposals(status) {
+    return this._request(status ? `/ai/proposals?status=${encodeURIComponent(status)}` : "/ai/proposals");
+  }
+
   approveProposal(proposalId) {
     return this._request(`/ai/proposals/${encodeURIComponent(proposalId)}/approve`, { method: "POST" });
   }

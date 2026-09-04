@@ -7,8 +7,14 @@ const onboard = require("./commands/onboard");
 const activate = require("./commands/activate");
 const status = require("./commands/status");
 const help = require("./commands/help");
+const pending = require("./commands/pending");
+const pause = require("./commands/pause");
+const resume = require("./commands/resume");
+const history = require("./commands/history");
+const audit = require("./commands/audit");
+const clients = require("./commands/clients");
 
-const commands = [onboard, activate, status, help];
+const commands = [onboard, activate, status, help, pending, pause, resume, history, audit, clients];
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection(commands.map((c) => [c.data.name, c]));

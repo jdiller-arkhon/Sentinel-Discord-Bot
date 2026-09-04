@@ -1,7 +1,7 @@
 const db = require("../db");
-const config = require("../config");
 const { SentinelClient, SentinelApiError } = require("../sentinelClient");
 const { recordAudit } = require("../audit");
+const { isOwnerOrAdmin } = require("../authz");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 
@@ -21,9 +21,7 @@ async function handleButton(interaction) {
     return interaction.reply({ content: "This channel isn't linked to a Sentinel instance anymore.", ephemeral: true });
   }
 
-  const isOwner = interaction.user.id === customer.discord_user_id;
-  const isAdmin = config.adminUserIds.has(interaction.user.id);
-  if (!isOwner && !isAdmin) {
+  if (!isOwnerOrAdmin(customer, interaction.user.id)) {
     return interaction.reply({ content: "Only the client this channel belongs to can do that.", ephemeral: true });
   }
 

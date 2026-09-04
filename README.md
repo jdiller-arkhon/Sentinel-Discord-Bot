@@ -46,8 +46,25 @@ npm start
   limited: 5 failed attempts per Discord user in 15 minutes locks out
   further tries (checked before the code is even looked up), and every
   attempt (success or failure) is logged to `activation_attempts`.
-- `/status` — run inside a client channel to check connection health.
+- `/status` — run inside a client channel to check connection health (last poll
+  time/result, consecutive failures, active/paused).
+- `/pending` — poll Sentinel right now for that channel instead of waiting for
+  the next scheduled cycle; reports how many new proposals it posted.
+- `/history` — the client's 5 most recently approved/rejected proposals, pulled
+  live from their own Sentinel instance (not cached locally).
+- `/audit` — the bot's own local record of who approved/rejected what in this
+  channel and when, independent of both Sentinel and Discord's message history.
+- `/pause` / `/resume` — stop or restart new proposals posting to this channel
+  without deleting the channel or its history; `/resume` also clears any
+  stale failure-alert state left over from before the pause.
+- `/clients` — admin-only. One-line status per onboarded client (channel,
+  activation state, active/paused, current failure count) without querying
+  the DB by hand.
 - `/help` — usage summary for the client.
+
+All of `/pending`, `/history`, `/audit`, `/pause`, and `/resume` are restricted
+to the channel's own client (or an admin) — the same ownership check the
+Approve/Reject buttons use (`src/authz.js`).
 
 ## Testing
 
@@ -75,6 +92,7 @@ npm start
   discord.js's own tested code paths but hasn't been verified live in
   this environment, since that requires a Discord bot token and test
   server this environment doesn't have.
-- Test coverage doesn't yet reach the poller loop or the button-click
-  handler directly (both depend on a live discord.js `Client`); the
-  logic they call (`SentinelClient`, `embeds`, `activation`) is covered.
+- Test coverage doesn't yet reach the poller loop, button-click handler,
+  or any of the new commands' `execute()` bodies directly — all depend
+  on a live discord.js `Client`/`Interaction`; the logic they call
+  (`SentinelClient`, `embeds`, `activation`, `authz`) is covered.
