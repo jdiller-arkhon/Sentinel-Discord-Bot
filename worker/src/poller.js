@@ -12,7 +12,7 @@ export async function pollAllLicenses(env) {
         const proposals = await listPendingProposals(license.sentinel_base_url);
         for (const proposal of proposals) {
           if (await hasPosted(env.DB, license.license_key, proposal.id)) continue;
-          const message = await postChannelMessage(license.discord_bot_token, license.discord_channel_id, {
+          const message = await postChannelMessage(env.ADMIN_BOT_TOKEN, license.discord_channel_id, {
             embeds: [proposalEmbed(proposal)],
             components: proposalComponents(proposal.id),
           });

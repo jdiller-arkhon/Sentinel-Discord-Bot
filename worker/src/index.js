@@ -1,11 +1,11 @@
 import { verifyDiscordRequest } from './verify.js';
-import { getLicenseByApplicationId, upsertAdminRow } from './db.js';
-import { licenseCommandDefinition, handleLicenseCommand, finishLicenseCreate } from './adminCommands.js';
+import { getLicenseByChannelId, upsertAdminRow } from './db.js';
+import { licenseCommandDefinition, activateCommandDefinition, handleLicenseCommand, handleActivateCommand } from './adminCommands.js';
 import { resolveProposalAction } from './buttonHandler.js';
 import { pollAllLicenses } from './poller.js';
 import { registerCommands } from './discordApi.js';
 
-const InteractionType = { PING: 1, APPLICATION_COMMAND: 2, MESSAGE_COMPONENT: 3, MODAL_SUBMIT: 5 };
+const InteractionType = { PING: 1, APPLICATION_COMMAND: 2, MESSAGE_COMPONENT: 3 };
 
 function json(body) {
   return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -13,9 +13,6 @@ function json(body) {
 
 async function ensureAdminRow(env) {
   await upsertAdminRow(env.DB, {
-    applicationId: env.ADMIN_APPLICATION_ID,
-    publicKey: env.ADMIN_PUBLIC_KEY,
-    botToken: env.ADMIN_BOT_TOKEN,
     channelId: env.ADMIN_CHANNEL_ID,
     allowedUserId: env.ADMIN_ALLOWED_USER_ID,
     sentinelBaseUrl: env.ADMIN_SENTINEL_BASE_URL,
@@ -27,6 +24,11 @@ async function handleInteractions(request, env, ctx) {
   const signatureHeader = request.headers.get('x-signature-ed25519');
   const timestampHeader = request.headers.get('x-signature-timestamp');
 
+  // Only one Discord Application exists in this model (yours) — every request
+  // is verified against the same public key, no per-customer lookup needed.
+  const valid = await verifyDiscordRequest(rawBody, signatureHeader, timestampHeader, env.ADMIN_PUBLIC_KEY);
+  if (!valid) return new Response('Invalid request signature', { status: 401 });
+
   let payload;
   try {
     payload = JSON.parse(rawBody);
@@ -34,31 +36,11 @@ async function handleInteractions(request, env, ctx) {
     return new Response('Bad request body', { status: 400 });
   }
 
-  const applicationId = payload.application_id;
-  const isAdminApp = applicationId === env.ADMIN_APPLICATION_ID;
-
-  let license = null;
-  let publicKey;
-
-  if (isAdminApp) {
-    await ensureAdminRow(env);
-    license = await getLicenseByApplicationId(env.DB, applicationId);
-    publicKey = env.ADMIN_PUBLIC_KEY;
-  } else {
-    license = await getLicenseByApplicationId(env.DB, applicationId);
-    if (!license || license.revoked) return new Response('Unknown or revoked application', { status: 401 });
-    publicKey = license.discord_public_key;
-  }
-
-  const valid = await verifyDiscordRequest(rawBody, signatureHeader, timestampHeader, publicKey);
-  if (!valid) return new Response('Invalid request signature', { status: 401 });
-
   if (payload.type === InteractionType.PING) {
     return json({ type: 1 });
   }
 
   if (payload.type === InteractionType.APPLICATION_COMMAND && payload.data.name === 'license') {
-    if (!isAdminApp) return json({ type: 4, data: { content: 'Not available.', flags: 1 << 6 } });
     const invokerId = payload.member?.user?.id ?? payload.user?.id;
     if (invokerId !== env.ADMIN_USER_ID) {
       return json({ type: 4, data: { content: 'You are not authorized to manage licenses.', flags: 1 << 6 } });
@@ -67,21 +49,20 @@ async function handleInteractions(request, env, ctx) {
     return json(response);
   }
 
-  if (payload.type === InteractionType.MODAL_SUBMIT && payload.data.custom_id.startsWith('license-create:')) {
-    if (!isAdminApp) return json({ type: 4, data: { content: 'Not available.', flags: 1 << 6 } });
-    const invokerId = payload.member?.user?.id ?? payload.user?.id;
-    if (invokerId !== env.ADMIN_USER_ID) {
-      return json({ type: 4, data: { content: 'You are not authorized to manage licenses.', flags: 1 << 6 } });
-    }
-    const workerOrigin = new URL(request.url).origin;
-    ctx.waitUntil(finishLicenseCreate(payload, env, workerOrigin));
-    return json({ type: 5, data: { flags: 1 << 6 } }); // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, ephemeral
+  if (payload.type === InteractionType.APPLICATION_COMMAND && payload.data.name === 'activate') {
+    const response = await handleActivateCommand(payload, env);
+    return json(response);
   }
 
   if (payload.type === InteractionType.MESSAGE_COMPONENT) {
     const [action, proposalId] = payload.data.custom_id.split(':');
     if (action !== 'approve' && action !== 'reject') {
       return json({ type: 4, data: { content: 'Unknown action.', flags: 1 << 6 } });
+    }
+
+    const license = await getLicenseByChannelId(env.DB, payload.channel_id);
+    if (!license || license.revoked) {
+      return json({ type: 4, data: { content: 'This channel is no longer linked to an active license.', flags: 1 << 6 } });
     }
 
     const invokerId = payload.member?.user?.id ?? payload.user?.id;
@@ -94,7 +75,7 @@ async function handleInteractions(request, env, ctx) {
         action,
         proposalId,
         license,
-        applicationId,
+        applicationId: env.ADMIN_APPLICATION_ID,
         interactionToken: payload.token,
       }),
     );
@@ -113,13 +94,18 @@ export default {
       return handleInteractions(request, env, ctx);
     }
 
-    // One-time-ish setup helper: registers the /license command on your admin
-    // Discord Application. Safe to call repeatedly (Discord replaces commands).
-    if (url.pathname === '/setup-admin-commands' && request.method === 'POST') {
+    // One-time-ish setup helper: registers /license and /activate on your bot.
+    // Safe to call repeatedly (Discord replaces command definitions).
+    if (url.pathname === '/setup-commands' && request.method === 'POST') {
       const key = url.searchParams.get('key');
       if (key !== env.ADMIN_USER_ID) return new Response('Forbidden', { status: 403 });
-      await registerCommands(env.ADMIN_BOT_TOKEN, env.ADMIN_APPLICATION_ID, [licenseCommandDefinition], env.ADMIN_GUILD_ID || undefined);
-      return new Response('Admin commands registered.');
+      await registerCommands(
+        env.ADMIN_BOT_TOKEN,
+        env.ADMIN_APPLICATION_ID,
+        [licenseCommandDefinition, activateCommandDefinition],
+        env.ADMIN_GUILD_ID || undefined,
+      );
+      return new Response('Commands registered.');
     }
 
     return new Response('Not found', { status: 404 });

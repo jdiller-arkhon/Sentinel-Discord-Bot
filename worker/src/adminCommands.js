@@ -1,28 +1,21 @@
-import { createLicense, createPendingCreate, consumePendingCreate, getLicenseByApplicationId, listLicenses, revokeLicense } from './db.js';
-import { setInteractionsEndpointUrl, buildInviteUrl, editOriginalInteractionResponse } from './discordApi.js';
-import { validationErrors, botTokenLooksValid } from './validators.js';
+import { createLicense, getLicense, activateLicense, getLicenseByChannelId, listLicenses, revokeLicense } from './db.js';
+import { createPrivateChannel, denyChannelAccess, postChannelMessage } from './discordApi.js';
+import { isValidSentinelUrl, isValidLicenseKeyFormat } from './validators.js';
 
 export const licenseCommandDefinition = {
   name: 'license',
-  description: 'Manage sub-bot licenses for Sentinel customers',
+  description: 'Manage customer licenses (admin only)',
   default_member_permissions: String(1 << 3), // ADMINISTRATOR
   options: [
     {
       name: 'create',
-      description: "Create a new customer license (bot token collected via a follow-up form)",
+      description: 'Generate a new activation token for a customer',
       type: 1, // SUB_COMMAND
-      options: [
-        { name: 'customer_name', description: 'Customer name', type: 3, required: true },
-        { name: 'application_id', description: "Customer's Discord Application id", type: 3, required: true },
-        { name: 'public_key', description: "Customer's Discord Application public key", type: 3, required: true },
-        { name: 'channel_id', description: 'Discord channel id proposals get posted in', type: 3, required: true },
-        { name: 'allowed_user_id', description: 'Discord user id allowed to approve/reject', type: 3, required: true },
-        { name: 'sentinel_base_url', description: "Customer's Sentinel URL (tunnel), e.g. https://sentinel.example.com", type: 3, required: true },
-      ],
+      options: [{ name: 'customer_name', description: 'Customer name', type: 3, required: true }],
     },
     {
       name: 'revoke',
-      description: 'Revoke a customer license',
+      description: "Revoke a customer's access",
       type: 1,
       options: [{ name: 'key', description: 'License key, e.g. SENT-XXXX-XXXX-XXXX-XXXX', type: 3, required: true }],
     },
@@ -30,149 +23,117 @@ export const licenseCommandDefinition = {
   ],
 };
 
-function mask(token) {
-  if (!token) return '';
-  return token.length <= 8 ? '****' : `${token.slice(0, 4)}...${token.slice(-4)}`;
-}
-
-function getOption(interaction, name) {
-  const sub = interaction.data.options[0];
-  return sub.options?.find((o) => o.name === name)?.value?.trim();
-}
+export const activateCommandDefinition = {
+  name: 'activate',
+  description: 'Redeem your Sentinel activation token and set up your private channel',
+  options: [
+    { name: 'token', description: 'The activation token you were given, e.g. SENT-XXXX-XXXX-XXXX-XXXX', type: 3, required: true },
+    { name: 'sentinel_url', description: 'Your Sentinel tunnel URL, e.g. https://sentinel.example.com', type: 3, required: true },
+  ],
+};
 
 function ephemeral(content) {
   return { type: 4, data: { content, flags: 1 << 6 } };
 }
 
-function modal(customId, title, fields) {
-  return {
-    type: 9,
-    data: {
-      custom_id: customId,
-      title,
-      components: fields.map((f) => ({
-        type: 1,
-        components: [{ type: 4, custom_id: f.id, label: f.label, style: 1, required: true }],
-      })),
-    },
-  };
+function getOption(interaction, name) {
+  return interaction.data.options?.find((o) => o.name === name)?.value?.trim();
+}
+
+function mask(url) {
+  return url ? url.replace(/^https:\/\//, '') : '(not activated)';
 }
 
 export async function handleLicenseCommand(interaction, env) {
-  const sub = interaction.data.options[0].name;
+  const sub = interaction.data.options[0];
 
-  if (sub === 'create') {
-    const record = {
-      customerName: getOption(interaction, 'customer_name'),
-      discordApplicationId: getOption(interaction, 'application_id'),
-      discordPublicKey: getOption(interaction, 'public_key'),
-      discordChannelId: getOption(interaction, 'channel_id'),
-      discordAllowedUserId: getOption(interaction, 'allowed_user_id'),
-      sentinelBaseUrl: getOption(interaction, 'sentinel_base_url'),
-    };
-
-    // Fail fast on obviously malformed input instead of silently creating a
-    // license that will never work — before we even ask for their bot token.
-    const errors = validationErrors(record);
-    if (errors.length > 0) {
-      return ephemeral(`Fix these before continuing:\n${errors.map((e) => `• ${e}`).join('\n')}`);
-    }
-
-    const existing = await getLicenseByApplicationId(env.DB, record.discordApplicationId);
-    if (existing) {
-      return ephemeral(
-        existing.revoked
-          ? `That Discord Application already has a revoked license (\`${existing.license_key}\`, ${existing.customer_name}). Delete it in D1 first if you want to reuse the application.`
-          : `That Discord Application is already licensed to **${existing.customer_name}** (\`${existing.license_key}\`).`,
-      );
-    }
-
-    const pendingId = await createPendingCreate(env.DB, record);
-    return modal(`license-create:${pendingId}`, `License for ${record.customerName}`, [
-      { id: 'discordBotToken', label: "Customer's Discord bot token" },
-    ]);
-  }
-
-  if (sub === 'revoke') {
-    const key = getOption(interaction, 'key');
-    const revoked = await revokeLicense(env.DB, key);
+  if (sub.name === 'create') {
+    const customerName = sub.options.find((o) => o.name === 'customer_name').value.trim();
+    const licenseKey = await createLicense(env.DB, customerName);
     return ephemeral(
-      revoked ? `Revoked license \`${key}\`. It will stop within a minute (next cron pass).` : `No license found with key \`${key}\`.`,
+      `License created for **${customerName}**: \`${licenseKey}\`\n\n` +
+        `Give this token to the customer. Once they've joined this server, they redeem it with:\n` +
+        `\`/activate token:${licenseKey} sentinel_url:<their tunnel URL>\``,
     );
   }
 
-  if (sub === 'list') {
-    const licenses = await listLicenses(env.DB);
-    const customerLicenses = licenses.filter((l) => !l.is_admin);
-    if (customerLicenses.length === 0) {
-      return ephemeral('No customer licenses yet. Use `/license create`.');
+  if (sub.name === 'revoke') {
+    const key = sub.options.find((o) => o.name === 'key').value.trim();
+    const license = await getLicense(env.DB, key);
+    if (!license || license.license_key === 'ADMIN') {
+      return ephemeral(`No license found with key \`${key}\`.`);
     }
-    const lines = customerLicenses.map(
-      (l) =>
-        `${l.revoked ? '🔴' : '🟢'} \`${l.license_key}\` — ${l.customer_name} (channel ${l.discord_channel_id}, user ${l.discord_allowed_user_id}, token ${mask(l.discord_bot_token)})`,
-    );
+    await revokeLicense(env.DB, key);
+    if (license.discord_channel_id && license.discord_allowed_user_id) {
+      try {
+        await denyChannelAccess(env.ADMIN_BOT_TOKEN, license.discord_channel_id, license.discord_allowed_user_id);
+        await postChannelMessage(env.ADMIN_BOT_TOKEN, license.discord_channel_id, {
+          content: '🔴 This license has been revoked. This channel is now read-only for you and will no longer receive proposals.',
+        });
+      } catch (err) {
+        return ephemeral(`Revoked \`${key}\`, but failed to lock the channel: ${err.message}`);
+      }
+    }
+    return ephemeral(`Revoked license \`${key}\` (${license.customer_name}).`);
+  }
+
+  if (sub.name === 'list') {
+    const licenses = await listLicenses(env.DB);
+    if (licenses.length === 0) return ephemeral('No customer licenses yet. Use `/license create`.');
+    const lines = licenses.map((l) => {
+      const status = l.revoked ? '🔴 revoked' : l.activated ? '🟢 active' : '🟡 pending activation';
+      return `${status}  \`${l.license_key}\` — ${l.customer_name}${l.activated ? ` (channel <#${l.discord_channel_id}>, sentinel ${mask(l.sentinel_base_url)})` : ''}`;
+    });
     return ephemeral(lines.join('\n'));
   }
 
   return ephemeral('Unknown subcommand.');
 }
 
-// Deferred: setting the customer's Interactions Endpoint URL involves a real
-// round-trip to Discord (which itself PINGs our /interactions endpoint as part
-// of verifying it), so this runs after an immediate deferred-response ack
-// (see index.js) rather than returning a value within Discord's 3s budget.
-export async function finishLicenseCreate(interaction, env, workerOrigin) {
-  const applicationId = interaction.application_id;
-  const interactionToken = interaction.token;
+export async function handleActivateCommand(interaction, env) {
+  const token = getOption(interaction, 'token');
+  const sentinelUrl = getOption(interaction, 'sentinel_url');
+  const invokerId = interaction.member?.user?.id ?? interaction.user?.id;
+  const guildId = interaction.guild_id;
 
-  const respond = (content) => editOriginalInteractionResponse(applicationId, interactionToken, { content });
-
-  const pendingId = interaction.data.custom_id.split(':')[1];
-  const pending = await consumePendingCreate(env.DB, pendingId);
-  if (!pending) {
-    await respond('This form expired or was already submitted. Run `/license create` again.');
-    return;
+  if (!guildId) {
+    return ephemeral('Run `/activate` inside the server, not in a DM — I need to create your private channel here.');
   }
 
-  const discordBotToken = interaction.data.components[0].components[0].value.trim();
-  if (!botTokenLooksValid(discordBotToken)) {
-    await respond("That doesn't look like a real Discord bot token (should be three dot-separated segments). Run `/license create` again.");
-    return;
+  if (!isValidLicenseKeyFormat(token)) {
+    return ephemeral('That doesn\'t look like a valid token (expected format `SENT-XXXX-XXXX-XXXX-XXXX`). Double-check what you were given.');
+  }
+  if (!isValidSentinelUrl(sentinelUrl)) {
+    return ephemeral('`sentinel_url` should start with `https://` — a Cloudflare Tunnel / ngrok URL, not `http://127.0.0.1:...`.');
   }
 
-  const { licenseKey } = await createLicense(env.DB, {
-    customerName: pending.customer_name,
-    discordApplicationId: pending.discord_application_id,
-    discordPublicKey: pending.discord_public_key,
-    discordBotToken,
-    discordChannelId: pending.discord_channel_id,
-    discordAllowedUserId: pending.discord_allowed_user_id,
-    sentinelBaseUrl: pending.sentinel_base_url,
+  const license = await getLicense(env.DB, token);
+  if (!license || license.license_key === 'ADMIN') {
+    return ephemeral('That token was not recognized. Double-check it, or contact whoever gave it to you.');
+  }
+  if (license.revoked) {
+    return ephemeral('That token has been revoked.');
+  }
+  if (license.activated) {
+    return ephemeral(`That token was already activated${license.discord_channel_id ? ` — see <#${license.discord_channel_id}>` : ''}.`);
+  }
+
+  const channel = await createPrivateChannel(env.ADMIN_BOT_TOKEN, {
+    guildId,
+    botUserId: env.ADMIN_BOT_USER_ID,
+    userId: invokerId,
+    name: `sentinel-${license.customer_name}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 90),
+    parentId: env.ADMIN_CUSTOMER_CATEGORY_ID || undefined,
   });
 
-  const inviteUrl = buildInviteUrl(pending.discord_application_id);
-  const interactionsUrl = `${workerOrigin}/interactions`;
+  await activateLicense(env.DB, token, { channelId: channel.id, allowedUserId: invokerId, sentinelBaseUrl: sentinelUrl });
 
-  // Their license row now exists in D1, so our own /interactions handler can
-  // already answer the verification PING Discord sends as part of this call —
-  // meaning we can set their Interactions Endpoint URL for them right now,
-  // instead of asking them to paste it into the Developer Portal themselves.
-  let endpointStatus;
-  try {
-    await setInteractionsEndpointUrl(discordBotToken, interactionsUrl);
-    endpointStatus = '✅ Interactions Endpoint URL set automatically — nothing to paste in the Developer Portal.';
-  } catch (err) {
-    endpointStatus =
-      `⚠️ Could not set the Interactions Endpoint URL automatically (${err.message}). ` +
-      `Set it manually in their app's General Information page to:\n\`${interactionsUrl}\``;
-  }
+  await postChannelMessage(env.ADMIN_BOT_TOKEN, channel.id, {
+    content:
+      `👋 This is **${license.customer_name}**'s private Sentinel channel. Only you and this bot can see it.\n` +
+      `Pending AI strategy proposals from your Sentinel instance will post here with Approve/Reject buttons — ` +
+      `only <@${invokerId}> can click them.`,
+  });
 
-  await respond(
-    `**License created for ${pending.customer_name}:** \`${licenseKey}\`\n\n` +
-      `${endpointStatus}\n\n` +
-      `Remaining steps for the customer:\n` +
-      `1. Invite the bot to their server: ${inviteUrl}\n` +
-      `2. Make sure their Sentinel tunnel (\`${pending.sentinel_base_url}\`) is reachable.\n\n` +
-      `Once both are done, proposals start posting within a minute (next cron pass).`,
-  );
+  return ephemeral(`Activated! Your private channel is ready: <#${channel.id}>`);
 }

@@ -4,112 +4,65 @@ function generateLicenseKey() {
   return `SENT-${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}`;
 }
 
-export async function getLicenseByApplicationId(db, applicationId) {
-  const row = await db
-    .prepare('SELECT * FROM licenses WHERE discord_application_id = ?')
-    .bind(applicationId)
-    .first();
-  return row || null;
+export async function createLicense(db, customerName) {
+  const licenseKey = generateLicenseKey();
+  await db
+    .prepare('INSERT INTO licenses (license_key, customer_name, activated, created_at, revoked) VALUES (?, ?, 0, ?, 0)')
+    .bind(licenseKey, customerName, new Date().toISOString())
+    .run();
+  return licenseKey;
 }
 
-export async function getActiveLicenses(db) {
-  const { results } = await db.prepare('SELECT * FROM licenses WHERE revoked = 0').all();
-  return results;
+export async function getLicense(db, licenseKey) {
+  return (await db.prepare('SELECT * FROM licenses WHERE license_key = ?').bind(licenseKey).first()) || null;
+}
+
+export async function getLicenseByChannelId(db, channelId) {
+  return (await db.prepare('SELECT * FROM licenses WHERE discord_channel_id = ?').bind(channelId).first()) || null;
+}
+
+export async function activateLicense(db, licenseKey, { channelId, allowedUserId, sentinelBaseUrl }) {
+  await db
+    .prepare(
+      `UPDATE licenses
+       SET discord_channel_id = ?, discord_allowed_user_id = ?, sentinel_base_url = ?, activated = 1, activated_at = ?
+       WHERE license_key = ?`,
+    )
+    .bind(channelId, allowedUserId, sentinelBaseUrl, new Date().toISOString(), licenseKey)
+    .run();
 }
 
 export async function listLicenses(db) {
-  const { results } = await db.prepare('SELECT * FROM licenses ORDER BY created_at DESC').all();
+  const { results } = await db.prepare("SELECT * FROM licenses WHERE license_key != 'ADMIN' ORDER BY created_at DESC").all();
   return results;
-}
-
-export async function createLicense(db, record) {
-  const licenseKey = generateLicenseKey();
-  const createdAt = new Date().toISOString();
-  await db
-    .prepare(
-      `INSERT INTO licenses
-        (license_key, customer_name, discord_application_id, discord_public_key, discord_bot_token,
-         discord_channel_id, discord_allowed_user_id, sentinel_base_url, is_admin, created_at, revoked)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0)`,
-    )
-    .bind(
-      licenseKey,
-      record.customerName,
-      record.discordApplicationId,
-      record.discordPublicKey,
-      record.discordBotToken,
-      record.discordChannelId,
-      record.discordAllowedUserId,
-      record.sentinelBaseUrl,
-      createdAt,
-    )
-    .run();
-  return { licenseKey, createdAt };
 }
 
 export async function revokeLicense(db, licenseKey) {
   const result = await db
-    .prepare('UPDATE licenses SET revoked = 1, revoked_at = ? WHERE license_key = ? AND is_admin = 0')
+    .prepare("UPDATE licenses SET revoked = 1, revoked_at = ? WHERE license_key = ? AND license_key != 'ADMIN'")
     .bind(new Date().toISOString(), licenseKey)
     .run();
   return result.meta.changes > 0;
+}
+
+export async function getActiveLicenses(db) {
+  const { results } = await db.prepare('SELECT * FROM licenses WHERE activated = 1 AND revoked = 0').all();
+  return results;
 }
 
 export async function upsertAdminRow(db, admin) {
   await db
     .prepare(
       `INSERT INTO licenses
-        (license_key, customer_name, discord_application_id, discord_public_key, discord_bot_token,
-         discord_channel_id, discord_allowed_user_id, sentinel_base_url, is_admin, created_at, revoked)
-       VALUES ('ADMIN', 'You (admin)', ?, ?, ?, ?, ?, ?, 1, ?, 0)
+        (license_key, customer_name, discord_channel_id, discord_allowed_user_id, sentinel_base_url, activated, created_at, revoked)
+       VALUES ('ADMIN', 'You (admin)', ?, ?, ?, 1, ?, 0)
        ON CONFLICT(license_key) DO UPDATE SET
-         discord_application_id = excluded.discord_application_id,
-         discord_public_key = excluded.discord_public_key,
-         discord_bot_token = excluded.discord_bot_token,
          discord_channel_id = excluded.discord_channel_id,
          discord_allowed_user_id = excluded.discord_allowed_user_id,
          sentinel_base_url = excluded.sentinel_base_url`,
     )
-    .bind(
-      admin.applicationId,
-      admin.publicKey,
-      admin.botToken,
-      admin.channelId,
-      admin.allowedUserId,
-      admin.sentinelBaseUrl,
-      new Date().toISOString(),
-    )
+    .bind(admin.channelId, admin.allowedUserId, admin.sentinelBaseUrl, new Date().toISOString())
     .run();
-}
-
-export async function createPendingCreate(db, record) {
-  const id = crypto.randomUUID().slice(0, 8);
-  await db
-    .prepare(
-      `INSERT INTO pending_creates
-        (id, customer_name, discord_application_id, discord_public_key, discord_channel_id,
-         discord_allowed_user_id, sentinel_base_url, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      record.customerName,
-      record.discordApplicationId,
-      record.discordPublicKey,
-      record.discordChannelId,
-      record.discordAllowedUserId,
-      record.sentinelBaseUrl,
-      new Date().toISOString(),
-    )
-    .run();
-  return id;
-}
-
-export async function consumePendingCreate(db, id) {
-  const row = await db.prepare('SELECT * FROM pending_creates WHERE id = ?').bind(id).first();
-  if (!row) return null;
-  await db.prepare('DELETE FROM pending_creates WHERE id = ?').bind(id).run();
-  return row;
 }
 
 export async function hasPosted(db, licenseKey, proposalId) {

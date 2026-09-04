@@ -33,33 +33,42 @@ export function editOriginalInteractionResponse(applicationId, interactionToken,
   });
 }
 
-export function followUpEphemeral(applicationId, interactionToken, content) {
-  return fetch(`${API_BASE}/webhooks/${applicationId}/${interactionToken}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, flags: 1 << 6 }),
-  });
-}
-
 export function registerCommands(botToken, applicationId, commands, guildId) {
   const path = guildId ? `/applications/${applicationId}/guilds/${guildId}/commands` : `/applications/${applicationId}/commands`;
   return discordFetch(path, botToken, { method: 'PUT', body: JSON.stringify(commands) });
 }
 
-// Sets the customer's own Discord Application's Interactions Endpoint URL to this
-// Worker, using the bot token they just gave us. Discord synchronously PINGs the
-// URL as part of this call and rejects it if verification fails — since we've
-// already inserted their license row before calling this, our /interactions
-// handler can already find their public key and answer the PING correctly.
-export function setInteractionsEndpointUrl(botToken, interactionsUrl) {
-  return discordFetch('/applications/@me', botToken, {
-    method: 'PATCH',
-    body: JSON.stringify({ interactions_endpoint_url: interactionsUrl }),
+const PERMISSION_VIEW_CHANNEL = 1n << 10n;
+const PERMISSION_SEND_MESSAGES = 1n << 11n;
+const PERMISSION_READ_HISTORY = 1n << 16n;
+const PERMISSION_EMBED_LINKS = 1n << 14n;
+
+// Creates a private text channel visible only to `userId` and the bot itself.
+// `everyoneRoleId` is always the guild's id (Discord's @everyone role id == guild id).
+export function createPrivateChannel(botToken, { guildId, botUserId, userId, name, parentId }) {
+  const allowUser = (PERMISSION_VIEW_CHANNEL | PERMISSION_SEND_MESSAGES | PERMISSION_READ_HISTORY).toString();
+  const allowBot = (PERMISSION_VIEW_CHANNEL | PERMISSION_SEND_MESSAGES | PERMISSION_READ_HISTORY | PERMISSION_EMBED_LINKS).toString();
+
+  return discordFetch(`/guilds/${guildId}/channels`, botToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      name,
+      type: 0, // GUILD_TEXT
+      parent_id: parentId || undefined,
+      permission_overwrites: [
+        { id: guildId, type: 0, deny: PERMISSION_VIEW_CHANNEL.toString() },
+        { id: userId, type: 1, allow: allowUser },
+        { id: botUserId, type: 1, allow: allowBot },
+      ],
+    }),
   });
 }
 
-const INVITE_PERMISSIONS = (1 << 11) | (1 << 14); // SEND_MESSAGES | EMBED_LINKS
-
-export function buildInviteUrl(applicationId) {
-  return `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot&permissions=${INVITE_PERMISSIONS}`;
+// Removes a specific member's access to a channel — used on revoke, without
+// deleting the channel or its history.
+export function denyChannelAccess(botToken, channelId, userId) {
+  return discordFetch(`/channels/${channelId}/permissions/${userId}`, botToken, {
+    method: 'PUT',
+    body: JSON.stringify({ type: 1, deny: PERMISSION_VIEW_CHANNEL.toString(), allow: '0' }),
+  });
 }
