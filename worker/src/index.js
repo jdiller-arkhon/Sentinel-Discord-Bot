@@ -16,6 +16,7 @@ async function ensureAdminRow(env) {
     channelId: env.ADMIN_CHANNEL_ID,
     allowedUserId: env.ADMIN_ALLOWED_USER_ID,
     sentinelBaseUrl: env.ADMIN_SENTINEL_BASE_URL,
+    sentinelToken: env.ADMIN_SENTINEL_TOKEN,
   });
 }
 

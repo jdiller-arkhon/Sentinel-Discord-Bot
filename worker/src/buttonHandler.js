@@ -15,7 +15,9 @@ function resultLine(action, allowedUserId, response) {
 export async function resolveProposalAction({ action, proposalId, license, applicationId, interactionToken }) {
   try {
     const response =
-      action === 'approve' ? await approveProposal(license.sentinel_base_url, proposalId) : await rejectProposal(license.sentinel_base_url, proposalId);
+      action === 'approve'
+        ? await approveProposal(license.sentinel_base_url, proposalId, license.sentinel_token)
+        : await rejectProposal(license.sentinel_base_url, proposalId, license.sentinel_token);
     await editOriginalInteractionResponse(applicationId, interactionToken, {
       embeds: [proposalEmbed(response.proposal)],
       components: proposalComponents(proposalId, true),

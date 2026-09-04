@@ -24,3 +24,4 @@ database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 #   ADMIN_ALLOWED_USER_ID    -- who can click Approve/Reject on your own proposals
 #   ADMIN_USER_ID            -- who can run /license commands (usually same as above)
 #   ADMIN_SENTINEL_BASE_URL  -- your own Sentinel's tunnel URL
+#   ADMIN_SENTINEL_TOKEN     -- optional: your own X-Sentinel-Token shared secret

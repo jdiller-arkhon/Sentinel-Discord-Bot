@@ -21,14 +21,14 @@ export async function getLicenseByChannelId(db, channelId) {
   return (await db.prepare('SELECT * FROM licenses WHERE discord_channel_id = ?').bind(channelId).first()) || null;
 }
 
-export async function activateLicense(db, licenseKey, { channelId, allowedUserId, sentinelBaseUrl }) {
+export async function activateLicense(db, licenseKey, { channelId, allowedUserId, sentinelBaseUrl, sentinelToken }) {
   await db
     .prepare(
       `UPDATE licenses
-       SET discord_channel_id = ?, discord_allowed_user_id = ?, sentinel_base_url = ?, activated = 1, activated_at = ?
+       SET discord_channel_id = ?, discord_allowed_user_id = ?, sentinel_base_url = ?, sentinel_token = ?, activated = 1, activated_at = ?
        WHERE license_key = ?`,
     )
-    .bind(channelId, allowedUserId, sentinelBaseUrl, new Date().toISOString(), licenseKey)
+    .bind(channelId, allowedUserId, sentinelBaseUrl, sentinelToken || null, new Date().toISOString(), licenseKey)
     .run();
 }
 
@@ -54,14 +54,15 @@ export async function upsertAdminRow(db, admin) {
   await db
     .prepare(
       `INSERT INTO licenses
-        (license_key, customer_name, discord_channel_id, discord_allowed_user_id, sentinel_base_url, activated, created_at, revoked)
-       VALUES ('ADMIN', 'You (admin)', ?, ?, ?, 1, ?, 0)
+        (license_key, customer_name, discord_channel_id, discord_allowed_user_id, sentinel_base_url, sentinel_token, activated, created_at, revoked)
+       VALUES ('ADMIN', 'You (admin)', ?, ?, ?, ?, 1, ?, 0)
        ON CONFLICT(license_key) DO UPDATE SET
          discord_channel_id = excluded.discord_channel_id,
          discord_allowed_user_id = excluded.discord_allowed_user_id,
-         sentinel_base_url = excluded.sentinel_base_url`,
+         sentinel_base_url = excluded.sentinel_base_url,
+         sentinel_token = excluded.sentinel_token`,
     )
-    .bind(admin.channelId, admin.allowedUserId, admin.sentinelBaseUrl, new Date().toISOString())
+    .bind(admin.channelId, admin.allowedUserId, admin.sentinelBaseUrl, admin.sentinelToken || null, new Date().toISOString())
     .run();
 }
 

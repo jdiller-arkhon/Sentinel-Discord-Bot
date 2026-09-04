@@ -29,6 +29,12 @@ export const activateCommandDefinition = {
   options: [
     { name: 'token', description: 'The activation token you were given, e.g. SENT-XXXX-XXXX-XXXX-XXXX', type: 3, required: true },
     { name: 'sentinel_url', description: 'Your Sentinel tunnel URL, e.g. https://sentinel.example.com', type: 3, required: true },
+    {
+      name: 'sentinel_token',
+      description: 'Your X-Sentinel-Token shared secret, if you set one up in Sentinel (optional but recommended)',
+      type: 3,
+      required: false,
+    },
   ],
 };
 
@@ -93,6 +99,7 @@ export async function handleLicenseCommand(interaction, env) {
 export async function handleActivateCommand(interaction, env) {
   const token = getOption(interaction, 'token');
   const sentinelUrl = getOption(interaction, 'sentinel_url');
+  const sentinelToken = getOption(interaction, 'sentinel_token');
   const invokerId = interaction.member?.user?.id ?? interaction.user?.id;
   const guildId = interaction.guild_id;
 
@@ -115,7 +122,18 @@ export async function handleActivateCommand(interaction, env) {
     return ephemeral('That token has been revoked.');
   }
   if (license.activated) {
-    return ephemeral(`That token was already activated${license.discord_channel_id ? ` — see <#${license.discord_channel_id}>` : ''}.`);
+    if (license.discord_allowed_user_id !== invokerId) {
+      return ephemeral(`That token was already activated by someone else — see <#${license.discord_channel_id}>.`);
+    }
+    // Let the original activator update their Sentinel URL/token in place, without
+    // creating a second channel.
+    await activateLicense(env.DB, token, {
+      channelId: license.discord_channel_id,
+      allowedUserId: invokerId,
+      sentinelBaseUrl: sentinelUrl,
+      sentinelToken,
+    });
+    return ephemeral(`Updated your Sentinel connection details for <#${license.discord_channel_id}>.`);
   }
 
   const channel = await createPrivateChannel(env.ADMIN_BOT_TOKEN, {
@@ -126,13 +144,14 @@ export async function handleActivateCommand(interaction, env) {
     parentId: env.ADMIN_CUSTOMER_CATEGORY_ID || undefined,
   });
 
-  await activateLicense(env.DB, token, { channelId: channel.id, allowedUserId: invokerId, sentinelBaseUrl: sentinelUrl });
+  await activateLicense(env.DB, token, { channelId: channel.id, allowedUserId: invokerId, sentinelBaseUrl: sentinelUrl, sentinelToken });
 
   await postChannelMessage(env.ADMIN_BOT_TOKEN, channel.id, {
     content:
       `👋 This is **${license.customer_name}**'s private Sentinel channel. Only you and this bot can see it.\n` +
       `Pending AI strategy proposals from your Sentinel instance will post here with Approve/Reject buttons — ` +
-      `only <@${invokerId}> can click them.`,
+      `only <@${invokerId}> can click them.` +
+      (sentinelToken ? '' : '\n\n⚠️ No shared-secret token was set — anyone who discovers your Sentinel tunnel URL could call it directly. Consider enabling one in Sentinel\'s settings and re-running `/activate`.'),
   });
 
   return ephemeral(`Activated! Your private channel is ready: <#${channel.id}>`);

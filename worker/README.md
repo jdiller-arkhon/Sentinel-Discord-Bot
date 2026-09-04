@@ -28,15 +28,36 @@ Portal work for customers at all.**
    (email, DM, after checkout) is up to you.
 3. They run, in your server:
    ```
-   /activate token:SENT-XXXX-XXXX-XXXX-XXXX sentinel_url:https://<their tunnel>
+   /activate token:SENT-XXXX-XXXX-XXXX-XXXX sentinel_url:https://<their tunnel> sentinel_token:<optional>
    ```
 4. The bot creates a private channel visible only to them, stores their channel
-   id + Discord user id + Sentinel URL against their license, and starts posting
-   proposals there within a minute.
+   id + Discord user id + Sentinel URL (+ token, if given) against their license,
+   and starts posting proposals there within a minute.
 
 That's the whole thing. No Developer Portal, no bot token, no public key, no
 invite link generation, no waiting on you to invite anything. The only
 information they need from outside Discord is their own Sentinel tunnel URL.
+
+They can re-run `/activate` with the same token later to update their Sentinel
+URL or token in place — it updates their existing channel rather than making a
+new one, as long as they're the same person who originally activated it.
+
+### Sentinel-side authentication (`sentinel_token`)
+
+Sentinel's approve/reject/list endpoints ship with no built-in authentication —
+its own CORS allowlist only restricts browser-origin requests (the desktop
+app's webview), which has no effect on this Worker's server-to-server calls.
+That means a Sentinel tunnel URL alone is what stands between the internet and
+a live "change my trading parameters" endpoint, so a shared-secret header is
+worth using:
+
+- If a customer's Sentinel instance checks for an `X-Sentinel-Token` header,
+  have them pass it as `/activate`'s optional `sentinel_token` — this Worker
+  sends it as `X-Sentinel-Token` on every request to their `sentinel_base_url`
+  (`src/sentinelApi.js`).
+- For your own admin bot, set the `ADMIN_SENTINEL_TOKEN` secret the same way.
+- If a customer doesn't set one, the bot still works, but their welcome message
+  in their new channel warns them that their tunnel URL alone is unauthenticated.
 
 ## One-time setup (you, not the customer)
 

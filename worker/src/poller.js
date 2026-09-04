@@ -9,7 +9,7 @@ export async function pollAllLicenses(env) {
   await Promise.allSettled(
     licenses.map(async (license) => {
       try {
-        const proposals = await listPendingProposals(license.sentinel_base_url);
+        const proposals = await listPendingProposals(license.sentinel_base_url, license.sentinel_token);
         for (const proposal of proposals) {
           if (await hasPosted(env.DB, license.license_key, proposal.id)) continue;
           const message = await postChannelMessage(env.ADMIN_BOT_TOKEN, license.discord_channel_id, {

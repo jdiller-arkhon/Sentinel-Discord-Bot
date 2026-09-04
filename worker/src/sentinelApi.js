@@ -6,13 +6,17 @@ export class SentinelApiError extends Error {
   }
 }
 
-async function request(baseUrl, path, options = {}) {
+async function request(baseUrl, path, token, options = {}) {
   const root = baseUrl.replace(/\/+$/, '');
   let res;
   try {
     res = await fetch(`${root}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'X-Sentinel-Token': token } : {}),
+        ...(options.headers || {}),
+      },
     });
   } catch (err) {
     throw new SentinelApiError(0, `Could not reach Sentinel at ${root}: ${err.message}`);
@@ -27,10 +31,10 @@ async function request(baseUrl, path, options = {}) {
   return body;
 }
 
-export const listPendingProposals = (baseUrl) => request(baseUrl, '/ai/proposals?status=pending');
+export const listPendingProposals = (baseUrl, token) => request(baseUrl, '/ai/proposals?status=pending', token);
 
-export const approveProposal = (baseUrl, proposalId) =>
-  request(baseUrl, `/ai/proposals/${encodeURIComponent(proposalId)}/approve`, { method: 'POST' });
+export const approveProposal = (baseUrl, proposalId, token) =>
+  request(baseUrl, `/ai/proposals/${encodeURIComponent(proposalId)}/approve`, token, { method: 'POST' });
 
-export const rejectProposal = (baseUrl, proposalId) =>
-  request(baseUrl, `/ai/proposals/${encodeURIComponent(proposalId)}/reject`, { method: 'POST' });
+export const rejectProposal = (baseUrl, proposalId, token) =>
+  request(baseUrl, `/ai/proposals/${encodeURIComponent(proposalId)}/reject`, token, { method: 'POST' });

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS licenses (
   discord_channel_id TEXT,               -- set on activation
   discord_allowed_user_id TEXT,          -- set on activation (whoever redeemed the token)
   sentinel_base_url TEXT,                -- set on activation
+  sentinel_token TEXT,                   -- optional: sent as X-Sentinel-Token if Sentinel checks it
   activated INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   activated_at TEXT,
