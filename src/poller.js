@@ -1,26 +1,24 @@
-import { config } from './config.js';
-import { listPendingProposals } from './sentinelClient.js';
-import { hasPosted, markPosted } from './proposalStore.js';
 import { proposalEmbed, proposalButtons } from './embeds.js';
 
-export function startPolling(client) {
+export function startPolling({ client, channelId, pollIntervalSeconds, sentinelClient, store, log = console }) {
   const poll = async () => {
     try {
-      const proposals = await listPendingProposals();
-      const channel = await client.channels.fetch(config.discordChannelId);
+      const proposals = await sentinelClient.listPendingProposals();
+      const channel = await client.channels.fetch(channelId);
       for (const proposal of proposals) {
-        if (hasPosted(proposal.id)) continue;
+        if (store.hasPosted(proposal.id)) continue;
         const message = await channel.send({
           embeds: [proposalEmbed(proposal)],
           components: [proposalButtons(proposal.id)],
         });
-        markPosted(proposal.id, message.id);
+        store.markPosted(proposal.id, message.id);
       }
     } catch (err) {
-      console.error('Poll failed:', err.message);
+      log.error('Poll failed:', err.message);
     }
   };
 
   poll();
-  setInterval(poll, config.pollIntervalSeconds * 1000);
+  const timer = setInterval(poll, pollIntervalSeconds * 1000);
+  return () => clearInterval(timer);
 }

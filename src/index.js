@@ -1,19 +1,14 @@
-import { Client, GatewayIntentBits } from 'discord.js';
 import { config } from './config.js';
-import { startPolling } from './poller.js';
-import { handleInteraction } from './interactionHandler.js';
+import { createBotInstance } from './bot.js';
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-client.once('clientReady', () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  startPolling(client);
+createBotInstance({
+  name: 'default',
+  discordBotToken: config.discordBotToken,
+  discordChannelId: config.discordChannelId,
+  discordAllowedUserId: config.discordAllowedUserId,
+  sentinelBaseUrl: config.sentinelBaseUrl,
+  pollIntervalSeconds: config.pollIntervalSeconds,
+}).catch((err) => {
+  console.error('Failed to start bot:', err);
+  process.exit(1);
 });
-
-client.on('interactionCreate', (interaction) => {
-  handleInteraction(interaction).catch((err) => {
-    console.error('Unhandled interaction error:', err);
-  });
-});
-
-client.login(config.discordBotToken);

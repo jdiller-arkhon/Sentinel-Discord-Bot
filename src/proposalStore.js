@@ -3,29 +3,37 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const STORE_PATH = `${__dirname}/../data/posted-proposals.json`;
+const DATA_DIR = `${__dirname}/../data`;
 
-function load() {
-  if (!existsSync(STORE_PATH)) return {};
-  try {
-    return JSON.parse(readFileSync(STORE_PATH, 'utf8'));
-  } catch {
-    return {};
+function safeName(name) {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+export function createProposalStore(instanceName = 'default') {
+  const storePath = `${DATA_DIR}/posted-proposals${instanceName === 'default' ? '' : `.${safeName(instanceName)}`}.json`;
+
+  function load() {
+    if (!existsSync(storePath)) return {};
+    try {
+      return JSON.parse(readFileSync(storePath, 'utf8'));
+    } catch {
+      return {};
+    }
   }
-}
 
-function save(data) {
-  mkdirSync(dirname(STORE_PATH), { recursive: true });
-  writeFileSync(STORE_PATH, JSON.stringify(data, null, 2));
-}
+  function save(data) {
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(storePath, JSON.stringify(data, null, 2));
+  }
 
-export function hasPosted(proposalId) {
-  const data = load();
-  return Boolean(data[proposalId]);
-}
-
-export function markPosted(proposalId, messageId) {
-  const data = load();
-  data[proposalId] = { messageId, postedAt: new Date().toISOString() };
-  save(data);
+  return {
+    hasPosted(proposalId) {
+      return Boolean(load()[proposalId]);
+    },
+    markPosted(proposalId, messageId) {
+      const data = load();
+      data[proposalId] = { messageId, postedAt: new Date().toISOString() };
+      save(data);
+    },
+  };
 }
