@@ -1,0 +1,21 @@
+{
+  "name": "sentinel-discord-bot",
+  "version": "0.1.0",
+  "description": "Self-hosted Discord bot that gives each Sentinel client their own private channel to review and approve/reject AI strategy proposals.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

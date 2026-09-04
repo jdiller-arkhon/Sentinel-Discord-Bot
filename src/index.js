@@ -1,0 +1,49 @@
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require("discord.js");
+const config = require("./config");
+const { startPolling } = require("./poller");
+const { handleButton } = require("./interactions/buttonHandler");
+
+const onboard = require("./commands/onboard");
+const status = require("./commands/status");
+const help = require("./commands/help");
+
+const commands = [onboard, status, help];
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+client.commands = new Collection(commands.map((c) => [c.data.name, c]));
+
+async function registerCommands() {
+  const rest = new REST().setToken(config.discordToken);
+  await rest.put(Routes.applicationGuildCommands(config.discordClientId, config.guildId), {
+    body: commands.map((c) => c.data.toJSON()),
+  });
+}
+
+client.once("ready", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+  await registerCommands();
+  startPolling(client);
+  console.log(`Polling every ${config.pollIntervalMs}ms`);
+});
+
+client.on("interactionCreate", async (interaction) => {
+  try {
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+      await command.execute(interaction);
+    } else if (interaction.isButton()) {
+      await handleButton(interaction);
+    }
+  } catch (err) {
+    console.error("interaction handler failed", err);
+    const payload = { content: "Something went wrong handling that.", ephemeral: true };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
+    }
+  }
+});
+
+client.login(config.discordToken);
