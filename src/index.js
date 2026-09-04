@@ -4,10 +4,11 @@ const { startPolling } = require("./poller");
 const { handleButton } = require("./interactions/buttonHandler");
 
 const onboard = require("./commands/onboard");
+const activate = require("./commands/activate");
 const status = require("./commands/status");
 const help = require("./commands/help");
 
-const commands = [onboard, status, help];
+const commands = [onboard, activate, status, help];
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection(commands.map((c) => [c.data.name, c]));

@@ -2,10 +2,17 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require("disco
 const crypto = require("crypto");
 const db = require("../db");
 const config = require("../config");
+const { generateActivationCode } = require("../activation");
 
 const insertCustomer = db.prepare(`
-  INSERT INTO customers (id, name, discord_user_id, channel_id, sentinel_base_url, sentinel_token, active, created_at)
-  VALUES (@id, @name, @discordUserId, @channelId, @sentinelBaseUrl, @sentinelToken, 1, @createdAt)
+  INSERT INTO customers (
+    id, name, discord_user_id, channel_id, sentinel_base_url, sentinel_token,
+    active, activated, activation_code_hash, activation_code_expires_at, created_at
+  )
+  VALUES (
+    @id, @name, @discordUserId, @channelId, @sentinelBaseUrl, @sentinelToken,
+    1, @activated, @activationCodeHash, @activationCodeExpiresAt, @createdAt
+  )
 `);
 
 function slugify(name) {
@@ -16,8 +23,13 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("onboard")
     .setDescription("[admin] Provision a private channel for a new Sentinel client")
-    .addUserOption((opt) => opt.setName("client").setDescription("The client's Discord account").setRequired(true))
     .addStringOption((opt) => opt.setName("name").setDescription("Client/company name").setRequired(true))
+    .addUserOption((opt) =>
+      opt
+        .setName("client")
+        .setDescription("The client's Discord account, if already known — skips /activate")
+        .setRequired(false)
+    )
     .addStringOption((opt) => opt.setName("sentinel_url").setDescription("Their Sentinel base URL").setRequired(true))
     .addStringOption((opt) => opt.setName("sentinel_token").setDescription("Their X-Sentinel-Token (if configured)").setRequired(false)),
 
@@ -39,7 +51,7 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const client = interaction.options.getUser("client", true);
+    const client = interaction.options.getUser("client", false);
     const name = interaction.options.getString("name", true);
     const sentinelUrl = interaction.options.getString("sentinel_url", true);
     const sentinelToken = interaction.options.getString("sentinel_token", false);
@@ -48,39 +60,85 @@ module.exports = {
     // Suffix with the customer id's first 8 chars so two clients with the
     // same/similar name can never collide on channel name.
     const channelName = `client-${slugify(name)}-${customerId.slice(0, 8)}`;
+    const botMemberId = interaction.client.user.id;
 
+    if (client) {
+      // Known Discord account — activate immediately, same as before.
+      const channel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+          {
+            id: client.id,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+          },
+          {
+            id: botMemberId,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+          },
+        ],
+      });
+
+      insertCustomer.run({
+        id: customerId,
+        name,
+        discordUserId: client.id,
+        channelId: channel.id,
+        sentinelBaseUrl: sentinelUrl,
+        sentinelToken: sentinelToken || null,
+        activated: 1,
+        activationCodeHash: null,
+        activationCodeExpiresAt: null,
+        createdAt: new Date().toISOString(),
+      });
+
+      await channel.send(
+        `Welcome, <@${client.id}>! This is your private Sentinel review channel. ` +
+          "New AI strategy proposals will show up here with Approve/Reject buttons as they come in. " +
+          "Run `/status` any time to check the connection, or `/help` for more."
+      );
+
+      return interaction.editReply(`Created ${channel} for **${name}** (customer id \`${customerId}\`).`);
+    }
+
+    // No Discord account known yet — self-serve path. Channel is locked
+    // to admins/the bot only; a one-time, high-entropy code (never
+    // stored in plaintext) is handed to whoever purchased access, and
+    // /activate claims the channel once, with rate limiting.
     const channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
       permissionOverwrites: [
         { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
         {
-          id: client.id,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-        },
-        {
-          id: interaction.client.user.id,
+          id: botMemberId,
           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
         },
       ],
     });
 
+    const { code, hash, expiresAt } = generateActivationCode();
+
     insertCustomer.run({
       id: customerId,
       name,
-      discordUserId: client.id,
+      discordUserId: null,
       channelId: channel.id,
       sentinelBaseUrl: sentinelUrl,
       sentinelToken: sentinelToken || null,
+      activated: 0,
+      activationCodeHash: hash,
+      activationCodeExpiresAt: expiresAt,
       createdAt: new Date().toISOString(),
     });
 
-    await channel.send(
-      `Welcome, <@${client.id}>! This is your private Sentinel review channel. ` +
-        "New AI strategy proposals will show up here with Approve/Reject buttons as they come in. " +
-        "Run `/status` any time to check the connection, or `/help` for more."
+    await interaction.editReply(
+      `Created ${channel} for **${name}** (customer id \`${customerId}\`), pending activation.\n` +
+        `Give the client this code (expires ${new Date(expiresAt).toLocaleDateString()}) to claim it — ` +
+        `have them join this server and run \`/activate code:${code}\` in any channel they can see ` +
+        "(the code, not channel access, is what protects the claim).\n" +
+        "**This code is shown once and is not recoverable — copy it now.**"
     );
-
-    await interaction.editReply(`Created ${channel} for **${name}** (customer id \`${customerId}\`).`);
   },
 };

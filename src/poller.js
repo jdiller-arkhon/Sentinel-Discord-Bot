@@ -3,7 +3,7 @@ const config = require("./config");
 const { SentinelClient } = require("./sentinelClient");
 const { proposalEmbed, proposalActionRow } = require("./embeds");
 
-const listActiveCustomers = db.prepare("SELECT * FROM customers WHERE active = 1");
+const listActiveCustomers = db.prepare("SELECT * FROM customers WHERE active = 1 AND activated = 1");
 const isPosted = db.prepare("SELECT 1 FROM posted_proposals WHERE customer_id = ? AND proposal_id = ?");
 const markPosted = db.prepare(
   "INSERT INTO posted_proposals (customer_id, proposal_id, message_id, posted_at) VALUES (?, ?, ?, ?)"
