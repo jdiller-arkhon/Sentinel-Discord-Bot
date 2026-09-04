@@ -45,3 +45,21 @@ export function registerCommands(botToken, applicationId, commands, guildId) {
   const path = guildId ? `/applications/${applicationId}/guilds/${guildId}/commands` : `/applications/${applicationId}/commands`;
   return discordFetch(path, botToken, { method: 'PUT', body: JSON.stringify(commands) });
 }
+
+// Sets the customer's own Discord Application's Interactions Endpoint URL to this
+// Worker, using the bot token they just gave us. Discord synchronously PINGs the
+// URL as part of this call and rejects it if verification fails — since we've
+// already inserted their license row before calling this, our /interactions
+// handler can already find their public key and answer the PING correctly.
+export function setInteractionsEndpointUrl(botToken, interactionsUrl) {
+  return discordFetch('/applications/@me', botToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ interactions_endpoint_url: interactionsUrl }),
+  });
+}
+
+const INVITE_PERMISSIONS = (1 << 11) | (1 << 14); // SEND_MESSAGES | EMBED_LINKS
+
+export function buildInviteUrl(applicationId) {
+  return `https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot&permissions=${INVITE_PERMISSIONS}`;
+}

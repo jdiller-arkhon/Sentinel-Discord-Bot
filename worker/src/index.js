@@ -1,6 +1,6 @@
 import { verifyDiscordRequest } from './verify.js';
 import { getLicenseByApplicationId, upsertAdminRow } from './db.js';
-import { licenseCommandDefinition, handleLicenseCommand, handleLicenseCreateModalSubmit } from './adminCommands.js';
+import { licenseCommandDefinition, handleLicenseCommand, finishLicenseCreate } from './adminCommands.js';
 import { resolveProposalAction } from './buttonHandler.js';
 import { pollAllLicenses } from './poller.js';
 import { registerCommands } from './discordApi.js';
@@ -73,8 +73,9 @@ async function handleInteractions(request, env, ctx) {
     if (invokerId !== env.ADMIN_USER_ID) {
       return json({ type: 4, data: { content: 'You are not authorized to manage licenses.', flags: 1 << 6 } });
     }
-    const response = await handleLicenseCreateModalSubmit(payload, env);
-    return json(response);
+    const workerOrigin = new URL(request.url).origin;
+    ctx.waitUntil(finishLicenseCreate(payload, env, workerOrigin));
+    return json({ type: 5, data: { flags: 1 << 6 } }); // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, ephemeral
   }
 
   if (payload.type === InteractionType.MESSAGE_COMPONENT) {

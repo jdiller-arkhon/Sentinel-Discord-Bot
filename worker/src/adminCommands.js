@@ -1,4 +1,6 @@
-import { createLicense, createPendingCreate, consumePendingCreate, listLicenses, revokeLicense } from './db.js';
+import { createLicense, createPendingCreate, consumePendingCreate, getLicenseByApplicationId, listLicenses, revokeLicense } from './db.js';
+import { setInteractionsEndpointUrl, buildInviteUrl, editOriginalInteractionResponse } from './discordApi.js';
+import { validationErrors, botTokenLooksValid } from './validators.js';
 
 export const licenseCommandDefinition = {
   name: 'license',
@@ -35,7 +37,7 @@ function mask(token) {
 
 function getOption(interaction, name) {
   const sub = interaction.data.options[0];
-  return sub.options?.find((o) => o.name === name)?.value;
+  return sub.options?.find((o) => o.name === name)?.value?.trim();
 }
 
 function ephemeral(content) {
@@ -68,6 +70,23 @@ export async function handleLicenseCommand(interaction, env) {
       discordAllowedUserId: getOption(interaction, 'allowed_user_id'),
       sentinelBaseUrl: getOption(interaction, 'sentinel_base_url'),
     };
+
+    // Fail fast on obviously malformed input instead of silently creating a
+    // license that will never work — before we even ask for their bot token.
+    const errors = validationErrors(record);
+    if (errors.length > 0) {
+      return ephemeral(`Fix these before continuing:\n${errors.map((e) => `• ${e}`).join('\n')}`);
+    }
+
+    const existing = await getLicenseByApplicationId(env.DB, record.discordApplicationId);
+    if (existing) {
+      return ephemeral(
+        existing.revoked
+          ? `That Discord Application already has a revoked license (\`${existing.license_key}\`, ${existing.customer_name}). Delete it in D1 first if you want to reuse the application.`
+          : `That Discord Application is already licensed to **${existing.customer_name}** (\`${existing.license_key}\`).`,
+      );
+    }
+
     const pendingId = await createPendingCreate(env.DB, record);
     return modal(`license-create:${pendingId}`, `License for ${record.customerName}`, [
       { id: 'discordBotToken', label: "Customer's Discord bot token" },
@@ -98,14 +117,28 @@ export async function handleLicenseCommand(interaction, env) {
   return ephemeral('Unknown subcommand.');
 }
 
-export async function handleLicenseCreateModalSubmit(interaction, env) {
+// Deferred: setting the customer's Interactions Endpoint URL involves a real
+// round-trip to Discord (which itself PINGs our /interactions endpoint as part
+// of verifying it), so this runs after an immediate deferred-response ack
+// (see index.js) rather than returning a value within Discord's 3s budget.
+export async function finishLicenseCreate(interaction, env, workerOrigin) {
+  const applicationId = interaction.application_id;
+  const interactionToken = interaction.token;
+
+  const respond = (content) => editOriginalInteractionResponse(applicationId, interactionToken, { content });
+
   const pendingId = interaction.data.custom_id.split(':')[1];
   const pending = await consumePendingCreate(env.DB, pendingId);
   if (!pending) {
-    return ephemeral('This form expired or was already submitted. Run `/license create` again.');
+    await respond('This form expired or was already submitted. Run `/license create` again.');
+    return;
   }
 
   const discordBotToken = interaction.data.components[0].components[0].value.trim();
+  if (!botTokenLooksValid(discordBotToken)) {
+    await respond("That doesn't look like a real Discord bot token (should be three dot-separated segments). Run `/license create` again.");
+    return;
+  }
 
   const { licenseKey } = await createLicense(env.DB, {
     customerName: pending.customer_name,
@@ -117,9 +150,29 @@ export async function handleLicenseCreateModalSubmit(interaction, env) {
     sentinelBaseUrl: pending.sentinel_base_url,
   });
 
-  return ephemeral(
-    `License created for **${pending.customer_name}**: \`${licenseKey}\`\n` +
-      `Their bot will start posting proposals within a minute (next cron pass), as long as their ` +
-      `Discord Application's Interactions Endpoint URL is set to this Worker's \`/interactions\` URL.`,
+  const inviteUrl = buildInviteUrl(pending.discord_application_id);
+  const interactionsUrl = `${workerOrigin}/interactions`;
+
+  // Their license row now exists in D1, so our own /interactions handler can
+  // already answer the verification PING Discord sends as part of this call —
+  // meaning we can set their Interactions Endpoint URL for them right now,
+  // instead of asking them to paste it into the Developer Portal themselves.
+  let endpointStatus;
+  try {
+    await setInteractionsEndpointUrl(discordBotToken, interactionsUrl);
+    endpointStatus = '✅ Interactions Endpoint URL set automatically — nothing to paste in the Developer Portal.';
+  } catch (err) {
+    endpointStatus =
+      `⚠️ Could not set the Interactions Endpoint URL automatically (${err.message}). ` +
+      `Set it manually in their app's General Information page to:\n\`${interactionsUrl}\``;
+  }
+
+  await respond(
+    `**License created for ${pending.customer_name}:** \`${licenseKey}\`\n\n` +
+      `${endpointStatus}\n\n` +
+      `Remaining steps for the customer:\n` +
+      `1. Invite the bot to their server: ${inviteUrl}\n` +
+      `2. Make sure their Sentinel tunnel (\`${pending.sentinel_base_url}\`) is reachable.\n\n` +
+      `Once both are done, proposals start posting within a minute (next cron pass).`,
   );
 }

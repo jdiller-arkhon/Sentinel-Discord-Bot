@@ -100,7 +100,15 @@ Links`). On the machine running Sentinel, run a Cloudflare Tunnel pointing at
 
 ## Onboarding a customer
 
-In Discord, run:
+What the customer still has to do manually (unavoidable — see "Why customers
+still need their own Discord Application" above):
+1. Create a Discord Application + bot user, copy its **application id**,
+   **public key**, and **bot token**.
+2. Grab a **channel id** (where proposals post) and their own **Discord user id**
+   (who's allowed to approve/reject).
+3. Have their Sentinel instance reachable over HTTPS (a Cloudflare Tunnel URL).
+
+That's it — everything past that point is automated by `/license create`:
 
 ```
 /license create
@@ -112,13 +120,32 @@ In Discord, run:
   sentinel_base_url: <their Sentinel tunnel URL>
 ```
 
-This opens a form asking only for their **bot token** — kept out of the command
-itself (and so out of channel history) since it's the one truly sensitive value.
-Submitting it creates the license and stores everything in D1.
+Before anything else, this validates every field's format (snowflake ids, a
+64-char hex public key, an `https://` Sentinel URL) and checks the application
+isn't already licensed — you get a clear, specific error back immediately instead
+of a silently broken license row.
 
-Then have the customer set **their own** Discord Application's Interactions
-Endpoint URL to your same `https://<your-worker-url>/interactions` — the Worker
-tells their bot and yours apart by `application_id`, so one URL serves everyone.
+If it passes, it opens a form asking only for their **bot token** — kept out of
+the command itself (and so out of channel history) since it's the one truly
+sensitive value.
+
+Submitting the form:
+1. Validates the token looks like a real Discord bot token.
+2. Creates the license and stores everything in D1.
+3. **Automatically sets their Discord Application's Interactions Endpoint URL**
+   to this Worker, using the token they just gave it — Discord's own API lets you
+   set that field on someone else's application as long as you're calling it with
+   *their* bot token, and this Worker can already answer the verification PING
+   that call triggers, since their license row now exists. The customer never has
+   to visit the Developer Portal for this step.
+4. **Generates their bot's invite link** for you, built from their application id
+   (Send Messages + Embed Links permissions) — no trip to OAuth2 → URL Generator
+   needed either.
+
+You get back a single message with the license key, whether the endpoint URL was
+set automatically (with a manual fallback URL if that call failed), and a ready-
+to-click invite link. The only things left for the customer are clicking that
+invite link and making sure their Sentinel tunnel is up.
 
 Their bot starts posting within a minute (next cron tick). `/license list` and
 `/license revoke key:<KEY>` manage existing customers the same way as the Node
