@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "admin": "node src/admin.js",
     "manager": "node src/manager.js",
     "license:create": "node scripts/create-license.js",
     "license:list": "node scripts/list-licenses.js",

@@ -84,16 +84,54 @@ system automates is everything *after* that: tracking each customer's config
 centrally, running all of their bots as isolated processes from one place, and
 revoking access without touching their Discord app.
 
+### The admin bot (your full-capability bot) vs. sub-bots
+
+There are three ways to run this codebase, and they are **not** interchangeable in
+capability:
+
+| Entry point       | Who runs it        | Capabilities                                                        |
+|--------------------|--------------------|----------------------------------------------------------------------|
+| `npm start`         | you (single-customer mode) | display proposals + approve/reject only |
+| `npm run admin`     | **you only**        | display proposals + approve/reject, **plus** `/license` admin commands |
+| `npm run manager`   | you (runs sub-bots) | spins up one sub-bot per license; each sub-bot has display + approve/reject **only** — never admin commands |
+
+The `admin` config block (`adminUserId`/`adminGuildId`) is only ever passed to
+`createBotInstance()` from `src/admin.js`. `src/manager.js` never passes it when
+starting a customer's sub-bot, so sub-bots have no code path that can create, list,
+or revoke licenses even if someone tried to invoke those commands against them —
+the commands simply aren't registered on that bot at all. Your admin bot is the
+only fully-functioning one; every sub-bot is permanently limited to displaying
+proposals and executing the approve/reject action a customer clicks.
+
 ### Create a license
 
+Two ways:
+
+**From the terminal:**
 ```bash
 npm run license:create
 ```
+Prompts for the customer's name, their Discord bot token, channel id, allowed user
+id, and Sentinel URL.
 
-You'll be prompted for the customer's name, their Discord bot token, channel id,
-allowed user id, and Sentinel URL. This generates a license key (e.g.
-`SENT-A1B2-C3D4-E5F6-0102`) and stores the whole record in `data/licenses.json`
-(gitignored — this file contains customer bot tokens, treat it like a secrets file).
+**From Discord**, once your admin bot is running (`npm run admin`):
+- `/license create` — opens a form (modal) with the same fields. Using a modal
+  (rather than command options) means the token never appears as plain text in the
+  channel history the way a typed command argument would.
+- `/license list` — lists all licenses (tokens masked), reply visible only to you.
+- `/license revoke key:<LICENSE-KEY>` — revokes one.
+
+All three subcommands check the invoking user against `ADMIN_USER_ID` (defaults to
+`DISCORD_ALLOWED_USER_ID`) and silently refuse anyone else, in addition to Discord's
+own `Administrator`-permission gate on the command itself.
+
+Either way, the generated key (e.g. `SENT-A1B2-C3D4-E5F6-0102`) and the whole
+record are stored in `data/licenses.json` (gitignored — this file contains customer
+bot tokens, treat it like a secrets file).
+
+Set `ADMIN_GUILD_ID` in `.env` to the server you manage licenses from so the
+`/license` command registers instantly there; leave it blank to register globally
+(takes up to ~1 hour to first appear).
 
 ### Run all active licenses
 
