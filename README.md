@@ -66,6 +66,39 @@ All of `/pending`, `/history`, `/audit`, `/pause`, and `/resume` are restricted
 to the channel's own client (or an admin) — the same ownership check the
 Approve/Reject buttons use (`src/authz.js`).
 
+### Admin commands
+
+Beyond `/onboard` and `/clients` above:
+
+- `/client-info channel:#...` — full single-client dossier: config, Sentinel
+  URL, token-configured flag, activation state, failure count, proposal/audit
+  counts, created date.
+- `/update-client channel:#... [name] [sentinel_url] [sentinel_token]` — edit
+  a client's config in place, no re-onboarding required.
+- `/revoke channel:#... [reason]` — fully deactivates a client: stops
+  polling, pulls their channel access, invalidates any outstanding
+  activation code. Reversible via `/regenerate-code` or `/transfer-client`.
+- `/regenerate-code channel:#...` — re-locks a channel and issues a fresh
+  one-time activation code (lost/expired code, or moving the client to a
+  new Discord account via self-serve claim).
+- `/transfer-client channel:#... new_owner:@user` — reassigns an already-
+  activated channel to a different Discord account directly (no code
+  needed), swapping the permission overwrite.
+- `/broadcast message:"..."` — sends an announcement embed to every
+  activated client's channel at once; reports delivered/failed counts.
+- `/poll-all` — forces an immediate full-fleet poll instead of waiting for
+  the schedule; reports how many clients were checked and proposals posted.
+- `/global-audit` — the last 15 approve/reject actions across *every*
+  client, not just one channel — cross-client oversight.
+- `/settings [poll_interval_seconds] [failure_threshold]` — view or change
+  the poll interval and failure-alert threshold at runtime; takes effect on
+  the very next poll tick, no restart (`src/runtimeSettings.js`).
+- `/maintenance mode:<on|off> [reason]` — globally pauses (or resumes) all
+  polling and automatically announces it to every active client's channel.
+- `/admins action:<add|remove|list> [user]` — grants or revokes admin
+  access at runtime, on top of the fixed `.env`-seeded `ADMIN_USER_IDS`
+  list (which can only be changed by editing `.env` and restarting).
+
 ## Visual design
 
 Every reply the bot sends is a Discord embed (`src/embeds.js`), not plain
@@ -114,7 +147,11 @@ text, so the whole bot reads as one consistent product:
   discord.js's own tested code paths but hasn't been verified live in
   this environment, since that requires a Discord bot token and test
   server this environment doesn't have.
-- Test coverage doesn't yet reach the poller loop, button-click handler,
-  or any of the new commands' `execute()` bodies directly — all depend
-  on a live discord.js `Client`/`Interaction`; the logic they call
-  (`SentinelClient`, `embeds`, `activation`, `authz`) is covered.
+- Test coverage doesn't yet reach the button-click handler or any
+  command's `execute()` body directly — all depend on a live discord.js
+  `Client`/`Interaction`; the logic they call (`SentinelClient`, `embeds`,
+  `activation`, `authz`, `admins`, `runtimeSettings`) is covered, and
+  `pollAll`'s maintenance-mode short-circuit is tested directly.
+- `/settings`'s poll-interval change is picked up by the poller's
+  self-rescheduling loop on the *next* tick, not instantly — the current
+  tick (if one is in flight) still runs at the old interval.

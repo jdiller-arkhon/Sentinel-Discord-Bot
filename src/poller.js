@@ -1,5 +1,6 @@
 const db = require("./db");
 const config = require("./config");
+const runtimeSettings = require("./runtimeSettings");
 const { SentinelClient } = require("./sentinelClient");
 const { proposalEmbed, proposalActionRow } = require("./embeds");
 
@@ -38,7 +39,7 @@ async function pollCustomer(discordClient, customer) {
     proposals = await sentinel.getPendingProposals();
   } catch (err) {
     const consecutiveFailures = customer.consecutive_failures + 1;
-    const shouldAlert = consecutiveFailures >= config.failureAlertThreshold && !customer.alerted_failure;
+    const shouldAlert = consecutiveFailures >= runtimeSettings.get().failureAlertThreshold && !customer.alerted_failure;
     recordPollResult.run({
       id: customer.id,
       consecutiveFailures,
@@ -115,6 +116,11 @@ async function pollCustomer(discordClient, customer) {
 }
 
 async function pollAll(discordClient) {
+  const { maintenanceMode } = runtimeSettings.get();
+  if (maintenanceMode) {
+    return { skipped: true, reason: "maintenance mode", customerCount: 0 };
+  }
+
   const customers = listActiveCustomers.all();
   const results = await Promise.allSettled(customers.map((c) => pollCustomer(discordClient, c)));
   results.forEach((r, i) => {
@@ -122,12 +128,31 @@ async function pollAll(discordClient) {
       console.error(`unexpected poll failure for customer ${customers[i].id}`, r.reason);
     }
   });
+  return {
+    skipped: false,
+    customerCount: customers.length,
+    postedCount: results.reduce((sum, r) => sum + (r.status === "fulfilled" ? r.value?.postedCount ?? 0 : 0), 0),
+  };
 }
 
+// Self-rescheduling rather than a fixed setInterval, so a poll-interval
+// change made via /settings takes effect on the very next tick instead
+// of requiring a bot restart.
 function startPolling(discordClient) {
-  const tick = () => pollAll(discordClient).catch((err) => console.error("poll cycle failed", err));
+  let stopped = false;
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      await pollAll(discordClient);
+    } catch (err) {
+      console.error("poll cycle failed", err);
+    }
+    if (!stopped) setTimeout(tick, runtimeSettings.get().pollIntervalMs);
+  };
   tick();
-  return setInterval(tick, config.pollIntervalMs);
+  return () => {
+    stopped = true;
+  };
 }
 
 module.exports = { startPolling, pollAll, pollCustomer };

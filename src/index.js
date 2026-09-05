@@ -13,8 +13,41 @@ const resume = require("./commands/resume");
 const history = require("./commands/history");
 const audit = require("./commands/audit");
 const clients = require("./commands/clients");
+const clientInfo = require("./commands/clientInfo");
+const revoke = require("./commands/revoke");
+const updateClient = require("./commands/updateClient");
+const regenerateCode = require("./commands/regenerateCode");
+const transferClient = require("./commands/transferClient");
+const broadcast = require("./commands/broadcast");
+const pollAllCommand = require("./commands/pollAll");
+const globalAudit = require("./commands/globalAudit");
+const settings = require("./commands/settings");
+const maintenance = require("./commands/maintenance");
+const adminsCommand = require("./commands/admins");
 
-const commands = [onboard, activate, status, help, pending, pause, resume, history, audit, clients];
+const commands = [
+  onboard,
+  activate,
+  status,
+  help,
+  pending,
+  pause,
+  resume,
+  history,
+  audit,
+  clients,
+  clientInfo,
+  revoke,
+  updateClient,
+  regenerateCode,
+  transferClient,
+  broadcast,
+  pollAllCommand,
+  globalAudit,
+  settings,
+  maintenance,
+  adminsCommand,
+];
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection(commands.map((c) => [c.data.name, c]));

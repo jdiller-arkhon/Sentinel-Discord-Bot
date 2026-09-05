@@ -58,6 +58,25 @@ db.exec(`
     result TEXT,
     created_at TEXT NOT NULL
   );
+
+  -- Admins beyond the .env-seeded ADMIN_USER_IDS list, addable/removable
+  -- at runtime via /admins without a restart or redeploy.
+  CREATE TABLE IF NOT EXISTS admins (
+    discord_user_id TEXT PRIMARY KEY,
+    added_by TEXT,
+    added_at TEXT NOT NULL
+  );
+
+  -- Singleton row (id = 1) for bot-wide settings changeable at runtime
+  -- via /settings and /maintenance, instead of only through .env + restart.
+  CREATE TABLE IF NOT EXISTS runtime_settings (
+    id INTEGER PRIMARY KEY,
+    poll_interval_ms INTEGER,
+    failure_alert_threshold INTEGER,
+    maintenance_mode INTEGER NOT NULL DEFAULT 0,
+    maintenance_reason TEXT,
+    updated_at TEXT
+  );
 `);
 
 module.exports = db;
