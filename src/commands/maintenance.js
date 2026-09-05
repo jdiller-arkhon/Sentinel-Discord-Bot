@@ -1,8 +1,9 @@
 const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const runtimeSettings = require("../runtimeSettings");
+const securityLog = require("../securityLog");
 
 const listActivatedCustomers = db.prepare("SELECT * FROM customers WHERE activated = 1");
 
@@ -20,7 +21,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName("reason").setDescription("Why (shown to clients when turning on)").setRequired(false)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "maintenance")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -37,6 +38,11 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
     runtimeSettings.setMaintenance(enabling, reason);
+    securityLog.record(enabling ? "maintenance_enabled" : "maintenance_disabled", {
+      discordUserId: interaction.user.id,
+      discordUsername: interaction.user.tag,
+      detail: reason || null,
+    });
 
     const announcement = enabling
       ? infoEmbed({

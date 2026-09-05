@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 
 const listAll = db.prepare("SELECT * FROM customers ORDER BY created_at DESC");
@@ -9,7 +9,7 @@ module.exports = {
   data: new SlashCommandBuilder().setName("clients").setDescription("[admin] List all onboarded clients and their status"),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "clients")) {
       return interaction.reply({
         embeds: [infoEmbed({ title: "Not authorized", description: "You're not authorized to run this.", color: 0xed4245 })],
         ephemeral: true,

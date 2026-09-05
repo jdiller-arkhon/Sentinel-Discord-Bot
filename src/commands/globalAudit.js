@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed, truncate } = require("../embeds");
 
 const getRecentGlobal = db.prepare(`
@@ -18,7 +18,7 @@ module.exports = {
     .setDescription("[admin] Recent approve/reject actions across every client"),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "global-audit")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 

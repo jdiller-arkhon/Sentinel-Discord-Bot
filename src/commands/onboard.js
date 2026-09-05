@@ -5,6 +5,7 @@ const config = require("../config");
 const { generateActivationCode } = require("../activation");
 const { infoEmbed } = require("../embeds");
 const secretCrypto = require("../secretCrypto");
+const { checkAdmin } = require("../authz");
 
 const insertCustomer = db.prepare(`
   INSERT INTO customers (
@@ -36,7 +37,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName("sentinel_token").setDescription("Their X-Sentinel-Token (if configured)").setRequired(false)),
 
   async execute(interaction) {
-    if (!config.adminUserIds.has(interaction.user.id)) {
+    if (!checkAdmin(interaction, "onboard")) {
       return interaction.reply({
         embeds: [infoEmbed({ title: "Not authorized", description: "You're not authorized to run this.", color: 0xed4245 })],
         ephemeral: true,

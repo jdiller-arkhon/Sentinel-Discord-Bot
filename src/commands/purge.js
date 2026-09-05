@@ -35,12 +35,17 @@ module.exports = {
 
     const deleted = await interaction.channel.bulkDelete(toDelete, true);
 
+    const scanTruncated = targetUser && fetchCount === 100 && messages.size === 100 && toDelete.length < amount;
     await interaction.editReply({
       embeds: [
         infoEmbed({
           title: "🧹 Purged",
-          description: `Deleted ${deleted.size} message(s)${targetUser ? ` from ${targetUser}` : ""}.` +
-            (deleted.size < toDelete.length ? "\n_(some were older than 14 days and Discord won't bulk-delete those)_" : ""),
+          description:
+            `Deleted ${deleted.size} message(s)${targetUser ? ` from ${targetUser}` : ""}.` +
+            (deleted.size < toDelete.length ? "\n_(some were older than 14 days and Discord won't bulk-delete those)_" : "") +
+            (scanTruncated
+              ? `\n_(only scanned the most recent 100 messages — there may be more of ${targetUser}'s to delete; run this again)_`
+              : ""),
           color: 0x2ecc71,
         }),
       ],

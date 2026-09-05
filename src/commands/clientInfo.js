@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
@@ -16,7 +16,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "client-info")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 

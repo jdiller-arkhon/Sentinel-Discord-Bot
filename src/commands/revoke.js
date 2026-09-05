@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
+const securityLog = require("../securityLog");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 const revokeStmt = db.prepare(`
@@ -20,7 +21,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName("reason").setDescription("Why (for the audit trail)").setRequired(false)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "revoke")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -37,6 +38,11 @@ module.exports = {
     await interaction.deferReply({ ephemeral: true });
 
     revokeStmt.run(customer.id);
+    securityLog.record("client_revoked", {
+      discordUserId: interaction.user.id,
+      discordUsername: interaction.user.tag,
+      detail: `revoked ${customer.name} (${customer.id})${reason ? `: ${reason}` : ""}`,
+    });
 
     // Pull the client's own view access — revoking should actually shut
     // them out, not just stop the poller quietly in the background.

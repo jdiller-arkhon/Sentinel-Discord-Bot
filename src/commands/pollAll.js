@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const { pollAll } = require("../poller");
 
@@ -9,7 +9,7 @@ module.exports = {
     .setDescription("[admin] Force a full poll of every active client right now"),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "poll-all")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 

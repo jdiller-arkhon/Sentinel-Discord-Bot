@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
+const securityLog = require("../securityLog");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 const transferStmt = db.prepare("UPDATE customers SET discord_user_id = ? WHERE id = ?");
@@ -16,7 +17,7 @@ module.exports = {
     .addUserOption((opt) => opt.setName("new_owner").setDescription("Their new Discord account").setRequired(true)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "transfer-client")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -45,6 +46,11 @@ module.exports = {
     }
 
     transferStmt.run(newOwner.id, customer.id);
+    securityLog.record("client_transferred", {
+      discordUserId: interaction.user.id,
+      discordUsername: interaction.user.tag,
+      detail: `${customer.name} (${customer.id}) → <@${newOwner.id}> (${newOwner.id})`,
+    });
 
     await interaction.editReply({
       embeds: [

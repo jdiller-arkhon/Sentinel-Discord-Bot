@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const secretCrypto = require("../secretCrypto");
+const securityLog = require("../securityLog");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 
@@ -18,7 +19,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName("sentinel_token").setDescription("New X-Sentinel-Token").setRequired(false)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "update-client")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -53,6 +54,11 @@ module.exports = {
     if (sentinelToken) {
       db.prepare("UPDATE customers SET sentinel_token = ? WHERE id = ?").run(secretCrypto.encrypt(sentinelToken), customer.id);
       updates.push("Sentinel token → _(updated, not shown)_");
+      securityLog.record("client_token_changed", {
+        discordUserId: interaction.user.id,
+        discordUsername: interaction.user.tag,
+        detail: `token rotated for ${customer.name} (${customer.id})`,
+      });
     }
 
     await interaction.reply({

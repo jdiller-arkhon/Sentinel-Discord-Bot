@@ -1,8 +1,9 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const admins = require("../admins");
 const config = require("../config");
+const securityLog = require("../securityLog");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,7 +19,7 @@ module.exports = {
     .addUserOption((opt) => opt.setName("user").setDescription("The Discord account (for add/remove)").setRequired(false)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "admins")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -44,6 +45,11 @@ module.exports = {
         return interaction.reply({ embeds: [infoEmbed({ title: "Already an admin", description: "Already an admin via .env." })], ephemeral: true });
       }
       admins.add(target.id, interaction.user.id);
+      securityLog.record("admin_added", {
+        discordUserId: interaction.user.id,
+        discordUsername: interaction.user.tag,
+        detail: `added <@${target.id}> (${target.id}) as admin`,
+      });
       return interaction.reply({
         embeds: [infoEmbed({ title: "Admin added", description: `<@${target.id}> can now run admin commands.`, color: 0x2ecc71 })],
         ephemeral: true,
@@ -64,6 +70,11 @@ module.exports = {
       });
     }
     admins.remove(target.id);
+    securityLog.record("admin_removed", {
+      discordUserId: interaction.user.id,
+      discordUsername: interaction.user.tag,
+      detail: `removed <@${target.id}> (${target.id}) as admin`,
+    });
     await interaction.reply({
       embeds: [infoEmbed({ title: "Admin removed", description: `<@${target.id}> can no longer run admin commands.`, color: 0x8a8f98 })],
       ephemeral: true,

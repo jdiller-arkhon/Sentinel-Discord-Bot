@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const runtimeSettings = require("../runtimeSettings");
 
@@ -15,7 +15,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "settings")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 

@@ -103,6 +103,9 @@ Beyond `/onboard` and `/clients` above:
 - `/admins action:<add|remove|list> [user]` — grants or revokes admin
   access at runtime, on top of the fixed `.env`-seeded `ADMIN_USER_IDS`
   list (which can only be changed by editing `.env` and restarting).
+- `/security-log` — the last 20 security-relevant events: denied admin
+  attempts, admin grants/revocations, client revoke/transfer/token-rotate/
+  code-regenerate, maintenance toggles. See "Security" below.
 
 ### Moderation commands
 
@@ -147,12 +150,16 @@ Discord's own API call fail opaquely.
   doesn't break an existing deployment; old plaintext values keep working
   once a key is later configured.
 - **Security event log** (`src/securityLog.js`, a `security_events`
-  table) — a place for security-relevant activity distinct from the
-  proposal-decision `audit_log`: denied admin-command attempts, admin
-  grants/revocations, client revocations, maintenance-mode toggles, and
-  token changes are the intended entries (wiring individual admin
-  commands to write to it is the natural next step, not yet done for
-  all of them).
+  table, viewable with `/security-log`) — distinct from the
+  proposal-decision `audit_log`: every Sentinel-admin-gated command
+  (`/onboard`, `/revoke`, `/admins`, `/maintenance`, `/update-client`,
+  `/regenerate-code`, `/transfer-client`, `/settings`, `/broadcast`,
+  `/poll-all`, `/clients`, `/client-info`, `/global-audit`) records a
+  denied attempt via `authz.checkAdmin()` — the single choke point every
+  one of them calls instead of `isAdmin()` directly — and the sensitive
+  ones (admin add/remove, client revoke/transfer/token-rotate/
+  code-regenerate, maintenance toggle) also log the action itself, not
+  just denials.
 - **Runtime admin management** (`/admins`) is itself an access-control
   surface worth calling out here: additions/removals take effect
   immediately without a restart, and the fixed `.env` seed list is
@@ -217,11 +224,6 @@ text, so the whole bot reads as one consistent product:
   are new and entirely untested beyond a load/validate smoke check
   (every command's `SlashCommandBuilder` parses and every name is
   unique) — no test exercises their actual Discord-API call paths.
-- `securityLog.js` and the `security_events` table exist and are ready
-  to use, but no command writes to them yet — `/security-log` to review
-  the log, and wiring `record()` into the denied-admin-attempt path and
-  the sensitive commands (`/revoke`, `/admins`, `/maintenance`,
-  `/update-client`'s token change), is the natural next step.
 - `/settings`'s poll-interval change is picked up by the poller's
   self-rescheduling loop on the *next* tick, not instantly — the current
   tick (if one is in flight) still runs at the old interval.

@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 const { generateActivationCode } = require("../activation");
+const securityLog = require("../securityLog");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 const relockStmt = db.prepare(`
@@ -20,7 +21,7 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "regenerate-code")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 
@@ -44,6 +45,11 @@ module.exports = {
 
     const { code, hash, expiresAt } = generateActivationCode();
     relockStmt.run({ id: customer.id, hash, expiresAt });
+    securityLog.record("client_code_regenerated", {
+      discordUserId: interaction.user.id,
+      discordUsername: interaction.user.tag,
+      detail: `re-locked ${customer.name} (${customer.id}), previous owner access pulled`,
+    });
 
     await interaction.editReply({
       embeds: [

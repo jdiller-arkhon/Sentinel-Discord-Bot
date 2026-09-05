@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
-const { isAdmin } = require("../authz");
+const { checkAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
 
 const listActivatedCustomers = db.prepare("SELECT * FROM customers WHERE activated = 1");
@@ -12,7 +12,7 @@ module.exports = {
     .addStringOption((opt) => opt.setName("message").setDescription("The announcement text").setRequired(true)),
 
   async execute(interaction) {
-    if (!isAdmin(interaction.user.id)) {
+    if (!checkAdmin(interaction, "broadcast")) {
       return interaction.reply({ embeds: [infoEmbed({ title: "Not authorized", color: 0xed4245 })], ephemeral: true });
     }
 

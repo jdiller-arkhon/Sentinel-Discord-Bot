@@ -24,6 +24,7 @@ const globalAudit = require("./commands/globalAudit");
 const settings = require("./commands/settings");
 const maintenance = require("./commands/maintenance");
 const adminsCommand = require("./commands/admins");
+const securityLogCommand = require("./commands/securityLogCommand");
 const purge = require("./commands/purge");
 const timeout = require("./commands/timeout");
 const untimeout = require("./commands/untimeout");
@@ -58,6 +59,7 @@ const commands = [
   settings,
   maintenance,
   adminsCommand,
+  securityLogCommand,
   purge,
   timeout,
   untimeout,

@@ -31,6 +31,18 @@ module.exports = {
         ephemeral: true,
       });
     }
+    if (!customer.active) {
+      return interaction.reply({
+        embeds: [
+          infoEmbed({
+            title: "Paused",
+            description: "This channel is paused — run `/resume` first if you want new proposals to post.",
+            color: 0x8a8f98,
+          }),
+        ],
+        ephemeral: true,
+      });
+    }
 
     await interaction.deferReply({ ephemeral: true });
     const result = await pollCustomer(interaction.client, getByChannel.get(interaction.channelId));
