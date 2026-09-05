@@ -28,7 +28,7 @@ async function handleButton(interaction) {
 
   await interaction.deferUpdate();
 
-  const sentinel = new SentinelClient({ baseUrl: customer.sentinel_base_url, token: customer.sentinel_token });
+  const sentinel = SentinelClient.forCustomer(customer);
 
   try {
     let resultTitle, resultDescription, color;

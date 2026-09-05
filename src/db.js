@@ -77,6 +77,30 @@ db.exec(`
     maintenance_reason TEXT,
     updated_at TEXT
   );
+
+  -- Security-relevant activity: denied admin-command attempts, admin
+  -- grants/revocations, client revocations, maintenance toggles, token
+  -- changes. See src/securityLog.js.
+  CREATE TABLE IF NOT EXISTS security_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    discord_user_id TEXT,
+    discord_username TEXT,
+    detail TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_security_events_created_at ON security_events (created_at);
+
+  -- Moderation warnings issued via /warn, viewable with /warnings.
+  CREATE TABLE IF NOT EXISTS warnings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    target_user_id TEXT NOT NULL,
+    moderator_user_id TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_warnings_target ON warnings (guild_id, target_user_id);
 `);
 
 module.exports = db;

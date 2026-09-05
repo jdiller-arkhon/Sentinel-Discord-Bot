@@ -24,6 +24,17 @@ const globalAudit = require("./commands/globalAudit");
 const settings = require("./commands/settings");
 const maintenance = require("./commands/maintenance");
 const adminsCommand = require("./commands/admins");
+const purge = require("./commands/purge");
+const timeout = require("./commands/timeout");
+const untimeout = require("./commands/untimeout");
+const kick = require("./commands/kick");
+const ban = require("./commands/ban");
+const unban = require("./commands/unban");
+const warn = require("./commands/warn");
+const warnings = require("./commands/warnings");
+const lock = require("./commands/lock");
+const unlock = require("./commands/unlock");
+const slowmode = require("./commands/slowmode");
 
 const commands = [
   onboard,
@@ -47,6 +58,17 @@ const commands = [
   settings,
   maintenance,
   adminsCommand,
+  purge,
+  timeout,
+  untimeout,
+  kick,
+  ban,
+  unban,
+  warn,
+  warnings,
+  lock,
+  unlock,
+  slowmode,
 ];
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });

@@ -14,7 +14,7 @@ const relockStmt = db.prepare(`
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("regenerate-code")
-    .setDescription("[admin] Re-lock a channel and issue a fresh activation code (lost/expired code, or moving to a new account)")
+    .setDescription("[admin] Re-lock a channel and issue a fresh activation code")
     .addChannelOption((opt) =>
       opt.setName("channel").setDescription("The client's channel").addChannelTypes(ChannelType.GuildText).setRequired(true)
     ),

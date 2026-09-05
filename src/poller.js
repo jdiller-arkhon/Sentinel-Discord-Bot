@@ -1,8 +1,8 @@
 const db = require("./db");
-const config = require("./config");
 const runtimeSettings = require("./runtimeSettings");
 const { SentinelClient } = require("./sentinelClient");
 const { proposalEmbed, proposalActionRow } = require("./embeds");
+const { alertAdmins } = require("./alerts");
 
 const listActiveCustomers = db.prepare("SELECT * FROM customers WHERE active = 1 AND activated = 1");
 const isPosted = db.prepare("SELECT 1 FROM posted_proposals WHERE customer_id = ? AND proposal_id = ?");
@@ -19,19 +19,8 @@ const recordPollResult = db.prepare(`
   WHERE id = @id
 `);
 
-async function alertAdmins(client, text) {
-  try {
-    const channel = await client.channels.fetch(config.adminAlertChannelId);
-    await channel.send({ content: text });
-  } catch (err) {
-    // Last resort — the admin alert channel itself is misconfigured or
-    // unreachable. Nothing else to escalate to.
-    console.error("failed to post admin alert", err);
-  }
-}
-
 async function pollCustomer(discordClient, customer) {
-  const sentinel = new SentinelClient({ baseUrl: customer.sentinel_base_url, token: customer.sentinel_token });
+  const sentinel = SentinelClient.forCustomer(customer);
   const now = new Date().toISOString();
 
   let proposals;

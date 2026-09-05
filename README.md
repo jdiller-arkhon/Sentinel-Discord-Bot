@@ -99,6 +99,62 @@ Beyond `/onboard` and `/clients` above:
   access at runtime, on top of the fixed `.env`-seeded `ADMIN_USER_IDS`
   list (which can only be changed by editing `.env` and restarting).
 
+### Moderation commands
+
+Standard Discord server-administration tools, unrelated to the Sentinel
+side of the bot entirely — gated on the invoker's actual Discord server
+permissions (via `setDefaultMemberPermissions` so Discord hides them from
+members without the permission, plus a runtime check in `authz.hasPermission`
+as a backstop), not on `ADMIN_USER_IDS`/`/admins`. A server's own Moderator
+role can use these without being a Sentinel admin, and vice versa.
+
+- `/purge amount:<1-100> [user]` — bulk-delete recent messages in the
+  current channel, optionally only one user's. *Manage Messages.*
+- `/timeout user:@... minutes:<1-40320> [reason]` / `/untimeout user:@...` —
+  mute/un-mute via Discord's native timeout. *Moderate Members.*
+- `/kick user:@... [reason]` — remove a member; they can rejoin with an
+  invite. *Kick Members.*
+- `/ban user:@... [reason] [delete_message_days]` / `/unban user_id:<id>` —
+  ban/unban; unban takes a raw ID since banned users aren't guild members
+  anymore. *Ban Members.*
+- `/warn user:@... reason:"..."` / `/warnings user:@...` — logs a warning
+  to a local `warnings` table and DMs the target (failure to DM, e.g.
+  closed DMs, doesn't block the warning being recorded), then lets a
+  moderator review a member's history. *Moderate Members.*
+- `/lock` / `/unlock` — stop (or restore) `@everyone` sending messages in
+  the current channel. *Manage Channels.*
+- `/slowmode seconds:<0-21600>` — set or clear the channel's slowmode
+  delay. *Manage Channels.*
+
+All of these check `member.moderatable`/`kickable`/`bannable` before
+acting and report a clear "role hierarchy" error instead of letting
+Discord's own API call fail opaquely.
+
+## Security
+
+- **Tokens encrypted at rest (optional).** Set `ENCRYPTION_KEY` (a 32-byte
+  hex value) and every client's `sentinel_token` is AES-256-GCM encrypted
+  before it's written to SQLite (`src/secretCrypto.js`), and transparently
+  decrypted via `SentinelClient.forCustomer(customer)` — no call site
+  needs to know or care whether encryption is configured. A random IV per
+  write means two clients with the same token never produce the same
+  ciphertext. Unset by default (tokens stored as given) so upgrading
+  doesn't break an existing deployment; old plaintext values keep working
+  once a key is later configured.
+- **Security event log** (`src/securityLog.js`, a `security_events`
+  table) — a place for security-relevant activity distinct from the
+  proposal-decision `audit_log`: denied admin-command attempts, admin
+  grants/revocations, client revocations, maintenance-mode toggles, and
+  token changes are the intended entries (wiring individual admin
+  commands to write to it is the natural next step, not yet done for
+  all of them).
+- **Runtime admin management** (`/admins`) is itself an access-control
+  surface worth calling out here: additions/removals take effect
+  immediately without a restart, and the fixed `.env` seed list is
+  deliberately *not* removable at runtime (only by editing `.env` and
+  restarting) — so there's always at least one admin route that can't be
+  locked out by a compromised runtime-added account.
+
 ## Visual design
 
 Every reply the bot sends is a Discord embed (`src/embeds.js`), not plain
@@ -150,8 +206,17 @@ text, so the whole bot reads as one consistent product:
 - Test coverage doesn't yet reach the button-click handler or any
   command's `execute()` body directly — all depend on a live discord.js
   `Client`/`Interaction`; the logic they call (`SentinelClient`, `embeds`,
-  `activation`, `authz`, `admins`, `runtimeSettings`) is covered, and
-  `pollAll`'s maintenance-mode short-circuit is tested directly.
+  `activation`, `authz`, `admins`, `runtimeSettings`, `secretCrypto`) is
+  covered, and `pollAll`'s maintenance-mode short-circuit is tested
+  directly. The moderation commands (`/purge`, `/timeout`, `/ban`, etc.)
+  are new and entirely untested beyond a load/validate smoke check
+  (every command's `SlashCommandBuilder` parses and every name is
+  unique) — no test exercises their actual Discord-API call paths.
+- `securityLog.js` and the `security_events` table exist and are ready
+  to use, but no command writes to them yet — `/security-log` to review
+  the log, and wiring `record()` into the denied-admin-attempt path and
+  the sensitive commands (`/revoke`, `/admins`, `/maintenance`,
+  `/update-client`'s token change), is the natural next step.
 - `/settings`'s poll-interval change is picked up by the poller's
   self-rescheduling loop on the *next* tick, not instantly — the current
   tick (if one is in flight) still runs at the old interval.

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, ChannelType } = require("discord.js");
 const db = require("../db");
 const { isAdmin } = require("../authz");
 const { infoEmbed } = require("../embeds");
+const secretCrypto = require("../secretCrypto");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 
@@ -50,7 +51,7 @@ module.exports = {
       updates.push(`Sentinel URL → \`${sentinelUrl}\``);
     }
     if (sentinelToken) {
-      db.prepare("UPDATE customers SET sentinel_token = ? WHERE id = ?").run(sentinelToken, customer.id);
+      db.prepare("UPDATE customers SET sentinel_token = ? WHERE id = ?").run(secretCrypto.encrypt(sentinelToken), customer.id);
       updates.push("Sentinel token → _(updated, not shown)_");
     }
 

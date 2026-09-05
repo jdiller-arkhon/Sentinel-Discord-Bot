@@ -29,7 +29,7 @@ module.exports = {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const sentinel = new SentinelClient({ baseUrl: customer.sentinel_base_url, token: customer.sentinel_token });
+    const sentinel = SentinelClient.forCustomer(customer);
     let approved, rejected;
     try {
       [approved, rejected] = await Promise.all([sentinel.getProposals("approved"), sentinel.getProposals("rejected")]);

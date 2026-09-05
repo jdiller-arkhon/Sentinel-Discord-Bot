@@ -1,3 +1,8 @@
+process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "test";
+process.env.DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "test";
+process.env.GUILD_ID = process.env.GUILD_ID || "test";
+process.env.ADMIN_ALERT_CHANNEL_ID = process.env.ADMIN_ALERT_CHANNEL_ID || "test";
+
 const { fetchWithRetry, SentinelClient, SentinelApiError } = require("../src/sentinelClient");
 
 function jsonResponse(status, body) {

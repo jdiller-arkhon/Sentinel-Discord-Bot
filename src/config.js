@@ -15,6 +15,10 @@ module.exports = {
   dbPath: process.env.DB_PATH || "./data/bot.db",
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS || 60000),
   failureAlertThreshold: Number(process.env.FAILURE_ALERT_THRESHOLD || 3),
+  // Optional 32-byte hex key that encrypts each client's Sentinel token
+  // at rest. Unset = tokens stored in plaintext (fine for a trusted,
+  // access-controlled host, but a real gap if the DB file could leak).
+  encryptionKey: process.env.ENCRYPTION_KEY || null,
   // Discord's own soft ceiling; we refuse to create a new channel once a
   // guild gets this close to the hard ~500 limit, rather than failing
   // silently inside a slash command.

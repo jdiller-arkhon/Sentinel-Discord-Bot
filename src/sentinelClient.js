@@ -6,6 +6,8 @@
  * "hiccup" from "actually broken."
  */
 
+const secretCrypto = require("./secretCrypto");
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -95,6 +97,18 @@ class SentinelClient {
 
   rejectProposal(proposalId) {
     return this._request(`/ai/proposals/${encodeURIComponent(proposalId)}/reject`, { method: "POST" });
+  }
+
+  /** Builds a client for a customer DB row, transparently decrypting
+   * sentinel_token if it was stored encrypted (see secretCrypto.js) —
+   * every call site should use this instead of reading the column
+   * directly, so no caller ever needs to know or care whether
+   * encryption-at-rest is configured. */
+  static forCustomer(customer) {
+    return new SentinelClient({
+      baseUrl: customer.sentinel_base_url,
+      token: secretCrypto.decrypt(customer.sentinel_token),
+    });
   }
 }
 

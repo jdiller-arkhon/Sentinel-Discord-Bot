@@ -4,6 +4,7 @@ const db = require("../db");
 const config = require("../config");
 const { generateActivationCode } = require("../activation");
 const { infoEmbed } = require("../embeds");
+const secretCrypto = require("../secretCrypto");
 
 const insertCustomer = db.prepare(`
   INSERT INTO customers (
@@ -96,7 +97,7 @@ module.exports = {
         discordUserId: client.id,
         channelId: channel.id,
         sentinelBaseUrl: sentinelUrl,
-        sentinelToken: sentinelToken || null,
+        sentinelToken: sentinelToken ? secretCrypto.encrypt(sentinelToken) : null,
         activated: 1,
         activationCodeHash: null,
         activationCodeExpiresAt: null,
@@ -145,7 +146,7 @@ module.exports = {
       discordUserId: null,
       channelId: channel.id,
       sentinelBaseUrl: sentinelUrl,
-      sentinelToken: sentinelToken || null,
+      sentinelToken: sentinelToken ? secretCrypto.encrypt(sentinelToken) : null,
       activated: 0,
       activationCodeHash: hash,
       activationCodeExpiresAt: expiresAt,
