@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require("discord.js");
 const db = require("../db");
 const { isOwnerOrAdmin } = require("../authz");
 const { SentinelClient } = require("../sentinelClient");
-const { truncate } = require("../embeds");
+const { infoEmbed, truncate } = require("../embeds");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 const HISTORY_LIMIT = 5;
@@ -15,10 +15,16 @@ module.exports = {
   async execute(interaction) {
     const customer = getByChannel.get(interaction.channelId);
     if (!customer) {
-      return interaction.reply({ content: "This channel isn't linked to a Sentinel instance.", ephemeral: true });
+      return interaction.reply({
+        embeds: [infoEmbed({ title: "Not linked", description: "This channel isn't linked to a Sentinel instance.", color: 0x8a8f98 })],
+        ephemeral: true,
+      });
     }
     if (!isOwnerOrAdmin(customer, interaction.user.id)) {
-      return interaction.reply({ content: "Only the client this channel belongs to can do that.", ephemeral: true });
+      return interaction.reply({
+        embeds: [infoEmbed({ title: "Not authorized", description: "Only the client this channel belongs to can do that.", color: 0xed4245 })],
+        ephemeral: true,
+      });
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -28,7 +34,9 @@ module.exports = {
     try {
       [approved, rejected] = await Promise.all([sentinel.getProposals("approved"), sentinel.getProposals("rejected")]);
     } catch (err) {
-      return interaction.editReply(`Couldn't reach Sentinel: \`${err.message}\``);
+      return interaction.editReply({
+        embeds: [infoEmbed({ title: "Couldn't reach Sentinel", description: `\`${err.message}\``, color: 0xed4245 })],
+      });
     }
 
     const combined = [...approved, ...rejected]
@@ -36,19 +44,19 @@ module.exports = {
       .slice(0, HISTORY_LIMIT);
 
     if (combined.length === 0) {
-      return interaction.editReply("No reviewed proposals yet.");
+      return interaction.editReply({ embeds: [infoEmbed({ title: "History", description: "No reviewed proposals yet." })] });
     }
 
-    const lines = combined.map((p) => {
+    const fields = combined.map((p) => {
       const when = p.reviewed_at ? new Date(p.reviewed_at).toLocaleString() : "unknown time";
-      const what =
-        p.proposal_type === "parameter_tweak"
-          ? `${p.target_strategy ?? "?"} parameter tweak`
-          : "new strategy idea";
-      const icon = p.status === "approved" ? "✅" : "❌";
-      return `${icon} **${what}** — ${p.status} at ${when}\n   ${truncate(p.rationale || "(no rationale)", 150)}`;
+      const what = p.proposal_type === "parameter_tweak" ? `${p.target_strategy ?? "?"} parameter tweak` : "new strategy idea";
+      const icon = p.status === "approved" ? "✅" : "⛔";
+      return {
+        name: `${icon} ${what} — ${when}`,
+        value: truncate(p.rationale || "_(no rationale)_", 200),
+      };
     });
 
-    await interaction.editReply(lines.join("\n\n"));
+    await interaction.editReply({ embeds: [infoEmbed({ title: `${customer.name} — Recent Decisions`, fields })] });
   },
 };

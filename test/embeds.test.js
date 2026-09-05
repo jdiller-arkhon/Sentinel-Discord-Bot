@@ -51,7 +51,27 @@ describe("proposalEmbed", () => {
     };
 
     const embed = proposalEmbed(proposal).toJSON();
-    expect(embed.fields.find((f) => f.name === "Proposed params").value).toBe("sma_short = 40");
-    expect(embed.fields.find((f) => f.name === "Proposed params").value).not.toMatch(/truncated/);
+    const paramsField = embed.fields.find((f) => f.name === "⚙️ Proposed Parameters");
+    expect(paramsField.value).toContain("sma_short = 40");
+    expect(paramsField.value).not.toMatch(/truncated/);
+    expect(embed.footer.text).toBe("Proposal #abc-123");
+    expect(embed.fields.find((f) => f.name === "🎯 Confidence").value).toContain("68%");
+  });
+
+  test("uses the right title, emoji, and color per status/strategy", () => {
+    const base = {
+      id: "abc-123",
+      created_at: new Date().toISOString(),
+      proposal_type: "new_strategy_idea",
+      target_strategy: "new",
+      new_strategy_description: "Try a volatility breakout strategy.",
+      rationale: "Diversify beyond momentum/mean-reversion.",
+      confidence: 55,
+      status: "approved",
+    };
+    const embed = proposalEmbed(base).toJSON();
+    expect(embed.title).toBe("💡 New Strategy Idea");
+    expect(embed.color).toBe(0x2ecc71);
+    expect(embed.fields.find((f) => f.name === "Status").value).toContain("Approved");
   });
 });

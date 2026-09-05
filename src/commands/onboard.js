@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const db = require("../db");
 const config = require("../config");
 const { generateActivationCode } = require("../activation");
+const { infoEmbed } = require("../embeds");
 
 const insertCustomer = db.prepare(`
   INSERT INTO customers (
@@ -35,16 +36,25 @@ module.exports = {
 
   async execute(interaction) {
     if (!config.adminUserIds.has(interaction.user.id)) {
-      return interaction.reply({ content: "You're not authorized to run this.", ephemeral: true });
+      return interaction.reply({
+        embeds: [infoEmbed({ title: "Not authorized", description: "You're not authorized to run this.", color: 0xed4245 })],
+        ephemeral: true,
+      });
     }
 
     const guild = interaction.guild;
     if (guild.channels.cache.size >= config.maxChannelsPerGuild) {
       return interaction.reply({
-        content:
-          `This server has ${guild.channels.cache.size} channels, at or past the configured safety ceiling ` +
-          `(${config.maxChannelsPerGuild}, below Discord's hard ~500 limit). Refusing to create another — ` +
-          "archive/delete old client channels or raise maxChannelsPerGuild deliberately.",
+        embeds: [
+          infoEmbed({
+            title: "Channel limit reached",
+            description:
+              `This server has ${guild.channels.cache.size} channels, at or past the configured safety ceiling ` +
+              `(${config.maxChannelsPerGuild}, below Discord's hard ~500 limit). Refusing to create another — ` +
+              "archive/delete old client channels or raise maxChannelsPerGuild deliberately.",
+            color: 0xed4245,
+          }),
+        ],
         ephemeral: true,
       });
     }
@@ -93,13 +103,22 @@ module.exports = {
         createdAt: new Date().toISOString(),
       });
 
-      await channel.send(
-        `Welcome, <@${client.id}>! This is your private Sentinel review channel. ` +
-          "New AI strategy proposals will show up here with Approve/Reject buttons as they come in. " +
-          "Run `/status` any time to check the connection, or `/help` for more."
-      );
+      await channel.send({
+        content: `<@${client.id}>`,
+        embeds: [
+          infoEmbed({
+            title: "👋 Welcome to Sentinel",
+            description:
+              "This is your private review channel. New AI strategy proposals will show up here with Approve/Reject buttons as they come in.\n\n" +
+              "Run `/status` any time to check the connection, or `/help` for more.",
+            color: 0x2ecc71,
+          }),
+        ],
+      });
 
-      return interaction.editReply(`Created ${channel} for **${name}** (customer id \`${customerId}\`).`);
+      return interaction.editReply({
+        embeds: [infoEmbed({ title: "Client onboarded", description: `Created ${channel} for **${name}**.`, fields: [{ name: "Customer ID", value: `\`${customerId}\`` }], color: 0x2ecc71 })],
+      });
     }
 
     // No Discord account known yet — self-serve path. Channel is locked
@@ -133,12 +152,22 @@ module.exports = {
       createdAt: new Date().toISOString(),
     });
 
-    await interaction.editReply(
-      `Created ${channel} for **${name}** (customer id \`${customerId}\`), pending activation.\n` +
-        `Give the client this code (expires ${new Date(expiresAt).toLocaleDateString()}) to claim it — ` +
-        `have them join this server and run \`/activate code:${code}\` in any channel they can see ` +
-        "(the code, not channel access, is what protects the claim).\n" +
-        "**This code is shown once and is not recoverable — copy it now.**"
-    );
+    await interaction.editReply({
+      embeds: [
+        infoEmbed({
+          title: "Client onboarded — pending activation",
+          description:
+            `Created ${channel} for **${name}**, locked until claimed.\n\n` +
+            `Give the client this code to claim it — have them join this server and run ` +
+            `\`/activate code:${code}\` in any channel they can see (the code, not channel access, is what protects the claim).\n\n` +
+            "⚠️ **This code is shown once and is not recoverable — copy it now.**",
+          fields: [
+            { name: "Customer ID", value: `\`${customerId}\``, inline: true },
+            { name: "Code expires", value: new Date(expiresAt).toLocaleDateString(), inline: true },
+          ],
+          color: 0xf5a623,
+        }),
+      ],
+    });
   },
 };

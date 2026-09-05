@@ -66,6 +66,28 @@ All of `/pending`, `/history`, `/audit`, `/pause`, and `/resume` are restricted
 to the channel's own client (or an admin) — the same ownership check the
 Approve/Reject buttons use (`src/authz.js`).
 
+## Visual design
+
+Every reply the bot sends is a Discord embed (`src/embeds.js`), not plain
+text, so the whole bot reads as one consistent product:
+
+- **Proposal cards** — the main artifact clients see. Strategy-specific
+  emoji + title (📈 Momentum, 🔄 Mean-Reversion, 💡 New Strategy), a
+  status-colored left bar (amber = pending, green = approved, grey =
+  rejected), proposed params rendered as a monospaced, column-aligned
+  table instead of a raw JSON dump, a 10-segment confidence bar
+  (`▰▰▰▰▰▰▰▱▱▱ 68%`), and a `Sentinel · Proposal #abcd1234` footer with
+  the real timestamp — never a raw UUID or a bare params object shown to
+  a client.
+- **Approve/Reject buttons** carry their own ✅/⛔ emoji, and clicking one
+  appends a small result embed under the original proposal card (rather
+  than replacing it), so the full context stays visible after a decision.
+- **Every other command** (`/status`, `/history`, `/audit`, `/clients`,
+  `/help`, onboarding/activation confirmations) shares the same
+  `infoEmbed()` builder and color palette (green = success, amber =
+  caution, red = error/unauthorized, grey = neutral/paused), so a client
+  never sees a mix of rich cards and flat text.
+
 ## Testing
 
 - `npm test` — unit tests (embed truncation, HTTP retry/backoff, the

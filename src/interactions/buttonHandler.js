@@ -2,6 +2,7 @@ const db = require("../db");
 const { SentinelClient, SentinelApiError } = require("../sentinelClient");
 const { recordAudit } = require("../audit");
 const { isOwnerOrAdmin } = require("../authz");
+const { infoEmbed } = require("../embeds");
 
 const getByChannel = db.prepare("SELECT * FROM customers WHERE channel_id = ?");
 
@@ -30,15 +31,17 @@ async function handleButton(interaction) {
   const sentinel = new SentinelClient({ baseUrl: customer.sentinel_base_url, token: customer.sentinel_token });
 
   try {
-    let resultText;
+    let resultTitle, resultDescription, color;
     if (action === "approve") {
       const { applied } = await sentinel.approveProposal(proposalId);
-      resultText = applied
-        ? "✅ Approved and applied."
-        : "✅ Approved (acknowledged only — no automatic change exists for this yet).";
+      resultTitle = "✅ Approved";
+      resultDescription = applied ? "Applied through Sentinel's audited path." : "Acknowledged — no automatic change exists for this yet.";
+      color = 0x2ecc71;
     } else {
       await sentinel.rejectProposal(proposalId);
-      resultText = "❌ Rejected.";
+      resultTitle = "⛔ Rejected";
+      resultDescription = "No change was made.";
+      color = 0x8a8f98;
     }
 
     recordAudit({
@@ -50,10 +53,16 @@ async function handleButton(interaction) {
       result: "ok",
     });
 
-    const disabledRow = disableRow(interaction.message.components);
+    const resultEmbed = infoEmbed({
+      title: resultTitle,
+      description: `${resultDescription}\n\n-# by ${interaction.user.tag}`,
+      color,
+    });
+    // Keep the original proposal card intact and stack the outcome below
+    // it, rather than replacing the card the reviewer was looking at.
     await interaction.editReply({
-      content: `${resultText} (by ${interaction.user.tag})`,
-      components: disabledRow,
+      embeds: [...interaction.message.embeds, resultEmbed],
+      components: disableRow(interaction.message.components),
     });
   } catch (err) {
     const isAlreadyReviewed = err instanceof SentinelApiError && err.status === 400;
@@ -71,15 +80,26 @@ async function handleButton(interaction) {
     if (isAlreadyReviewed || isNotFound) {
       // Backstop for a double-click race — Sentinel's own 400 is the
       // source of truth, we just render it gracefully instead of raw.
-      await interaction.editReply({
-        content: isAlreadyReviewed
+      const resultEmbed = infoEmbed({
+        title: isAlreadyReviewed ? "Already reviewed" : "No longer exists",
+        description: isAlreadyReviewed
           ? `Someone already reviewed this proposal (${err.detail || "already reviewed"}).`
           : "This proposal no longer exists on Sentinel.",
+        color: 0x8a8f98,
+      });
+      await interaction.editReply({
+        embeds: [...interaction.message.embeds, resultEmbed],
         components: disableRow(interaction.message.components),
       });
     } else {
       await interaction.followUp({
-        content: `Failed to ${action} — Sentinel didn't respond after retries. Try again shortly. (\`${err.message}\`)`,
+        embeds: [
+          infoEmbed({
+            title: "Failed",
+            description: `Sentinel didn't respond after retries. Try again shortly.\n\`${err.message}\``,
+            color: 0xed4245,
+          }),
+        ],
         ephemeral: true,
       });
     }
