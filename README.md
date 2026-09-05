@@ -4,6 +4,11 @@ Self-hosted Discord bot that gives each paying Sentinel client their own
 private channel to review and approve/reject AI strategy proposals,
 without needing to open the Sentinel desktop app.
 
+Open `preview.html` in a browser (or `git checkout` this repo and double-click
+it) for an interactive, click-through mockup of what a client's channel
+looks like and how each command runs — built from the bot's real
+embed-rendering code, not hand-drawn.
+
 ## How it works
 
 - Runs as a normal persistent Node process on your server, connected to

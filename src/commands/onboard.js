@@ -69,8 +69,12 @@ module.exports = {
 
     const customerId = crypto.randomUUID();
     // Suffix with the customer id's first 8 chars so two clients with the
-    // same/similar name can never collide on channel name.
-    const channelName = `client-${slugify(name)}-${customerId.slice(0, 8)}`;
+    // same/similar name can never collide on channel name. The 🛡️ prefix
+    // is a standard Unicode emoji, not the Sentinel logo image — Discord
+    // channel names can only render Unicode emoji, never a custom
+    // uploaded server emoji (that shows as literal ":sentinel:" text
+    // there, even though it works fine in messages/reactions).
+    const channelName = `🛡️-client-${slugify(name)}-${customerId.slice(0, 8)}`;
     const botMemberId = interaction.client.user.id;
 
     if (client) {
